@@ -73,7 +73,7 @@ class EGNN(nn.Module):
         coor_weights = self.coors_mlp(m_ij)
         coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
 
-        coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors)
+        coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
 
         m_i = m_ij.sum(dim = -2)
 
@@ -125,7 +125,7 @@ class EGAT(nn.Module):
         )
 
     def forward(self, feats, coors, edges = None):
-        b, n, d, h, fourier_features = *feats.shape, self.heads, self.fourier_features
+        b, n, d, h, fourier_features, device = *feats.shape, self.heads, self.fourier_features, feats.device
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
         rel_dist = rel_coors.norm(dim = -1, keepdim = True)
@@ -155,7 +155,7 @@ class EGAT(nn.Module):
         m_ij = self.edge_mlp(edge_input)
 
         coor_weights = self.coors_mlp(m_ij)
-        coors_out = einsum('b h i j, b i j c -> b i c', coor_weights, rel_coors)
+        coors_out = einsum('b h i j, b i j c -> b i c', coor_weights, rel_coors) + coors
 
         # derive attention
 
