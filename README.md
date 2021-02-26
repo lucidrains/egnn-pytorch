@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 ## EGNN - Pytorch (wip)
+=======
+<img src="./egnn.png" width="600px"></img>
+
+## EGNN - Pytorch
+>>>>>>> diagram
 
 Implementation of <a href="https://arxiv.org/abs/2102.09844v1">E(n)-Equivariant Graph Neural Networks</a>, in Pytorch. May be eventually used for Alphafold2 replication.
 
