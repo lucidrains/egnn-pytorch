@@ -47,7 +47,7 @@ feats, coors = layer2(feats, coors, edges) # (1, 16, 512), (1, 16, 3)
 
 - [ ] add integration with pytorch geometric
 - [ ] add tests for se3 equivariance
-- [ ] add an EGAT (attention flavored variant)
+- [x] add an EGAT (attention flavored variant)
 
 
 ## Citations
