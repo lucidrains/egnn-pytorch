@@ -2,7 +2,7 @@
 
 ## EGNN - Pytorch (wip)
 
-Implementation of <a href="https://arxiv.org/abs/2102.09844v1">E(n)-Equivariant Graph Neural Networks</a>, in Pytorch. May be eventually used for Alphafold2 replication.
+Implementation of <a href="https://arxiv.org/abs/2102.09844v1">E(n)-Equivariant Graph Neural Networks</a>, in Pytorch. May be eventually used for Alphafold2 replication. This technique went for simple invariant features, and ended up beating out all previous methods (including SE3 Transformer and Lie Conv) in both accuracy and performance.
 
 ## Install
 
