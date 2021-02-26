@@ -54,11 +54,11 @@ feats, coors = layer2(feats, coors, edges) # (1, 16, 512), (1, 16, 3)
 
 ```bibtex
 @misc{satorras2021en,
-	title 	= {E(n) Equivariant Graph Neural Networks}, 
-	author 	= {Victor Garcia Satorras and Emiel Hoogeboom and Max Welling},
-	year 	= {2021},
-	eprint 	= {2102.09844},
-	archivePrefix = {arXiv},
-	primaryClass = {cs.LG}
+    title 	= {E(n) Equivariant Graph Neural Networks}, 
+    author 	= {Victor Garcia Satorras and Emiel Hoogeboom and Max Welling},
+    year 	= {2021},
+    eprint 	= {2102.09844},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.LG}
 }
 ```
