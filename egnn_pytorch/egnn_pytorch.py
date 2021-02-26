@@ -2,11 +2,14 @@ import torch
 from torch import nn, einsum
 from einops import rearrange, repeat
 
+def exists(val):
+    return val is not None
+
 class EGNN(nn.Module):
     def __init__(
         self,
         dim,
-        edge_dim,
+        edge_dim = 0,
         m_dim = 16
     ):
         super().__init__()
@@ -38,7 +41,10 @@ class EGNN(nn.Module):
 
         feats_i = repeat(feats, 'b i d -> b i n d', n = n)
         feats_j = repeat(feats, 'b j d -> b n j d', n = n)
-        edge_input = torch.cat((feats_i, feats_j, rel_dist, edges), dim = -1)
+        edge_input = torch.cat((feats_i, feats_j, rel_dist), dim = -1)
+
+        if exists(edges):
+            edge_input = torch.cat((edge_input, edges), dim = -1)
 
         m_ij = self.edge_mlp(edge_input)
 

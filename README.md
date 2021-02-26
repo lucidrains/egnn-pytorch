@@ -16,6 +16,22 @@ $ pip install egnn-pytorch
 import torch
 from egnn_pytorch import EGNN
 
+layer1 = EGNN(dim = 512)
+layer2 = EGNN(dim = 512)
+
+feats = torch.randn(1, 16, 512)
+coors = torch.randn(1, 16, 3)
+
+feats, coors = layer1(feats, coors)
+feats, coors = layer2(feats, coors) # (1, 16, 512), (1, 16, 3)
+```
+
+With edges
+
+```python
+import torch
+from egnn_pytorch import EGNN
+
 layer1 = EGNN(dim = 512, edge_dim = 4)
 layer2 = EGNN(dim = 512, edge_dim = 4)
 
