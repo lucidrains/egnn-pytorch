@@ -2,23 +2,39 @@ import torch
 from torch import nn, einsum
 from einops import rearrange, repeat
 
+# helper functions
+
 def exists(val):
     return val is not None
+
+def fourier_encode_dist(x, num_encodings = 4, include_self = True):
+    x = x.unsqueeze(-1)
+    device, dtype, orig_x = x.device, x.dtype, x
+    scales = 2 ** torch.arange(num_encodings, device = device, dtype = dtype)
+    x = x / scales
+    x = torch.cat([x.sin(), x.cos()], dim=-1)
+    x = torch.cat((x, orig_x), dim = -1) if include_self else x
+    return x
+
+# classes
 
 class EGNN(nn.Module):
     def __init__(
         self,
         dim,
         edge_dim = 0,
-        m_dim = 16
+        m_dim = 16,
+        fourier_features = 0
     ):
         super().__init__()
-        input_dim = 2 * dim + edge_dim + 1
+        self.fourier_features = fourier_features
+
+        edge_input_dim = (fourier_features * 2) + (dim * 2) + edge_dim + 1
 
         self.edge_mlp = nn.Sequential(
-            nn.Linear(input_dim, input_dim * 2),
+            nn.Linear(edge_input_dim, edge_input_dim * 2),
             nn.ReLU(),
-            nn.Linear(input_dim * 2, m_dim)
+            nn.Linear(edge_input_dim * 2, m_dim)
         )
 
         self.coors_mlp = nn.Sequential(
@@ -34,10 +50,14 @@ class EGNN(nn.Module):
         )
 
     def forward(self, feats, coors, edges = None):
-        b, n, d = feats.shape
+        b, n, d, fourier_features = *feats.shape, self.fourier_features
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
         rel_dist = rel_coors.norm(dim = -1, keepdim = True)
+
+        if fourier_features > 0:
+            rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
+            rel_dist = rearrange(rel_dist, 'b i j () d -> b i j d')
 
         feats_i = repeat(feats, 'b i d -> b i n d', n = n)
         feats_j = repeat(feats, 'b j d -> b n j d', n = n)
