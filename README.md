@@ -1,6 +1,6 @@
 <img src="./egnn.png" width="600px"></img>
 
-## EGNN - Pytorch (wip)
+## EGNN - Pytorch
 
 Implementation of <a href="https://arxiv.org/abs/2102.09844v1">E(n)-Equivariant Graph Neural Networks</a>, in Pytorch. May be eventually used for Alphafold2 replication. This technique went for simple invariant features, and ended up beating out all previous methods (including SE3 Transformer and Lie Conv) in both accuracy and performance.
 
@@ -42,14 +42,6 @@ edges = torch.randn(1, 16, 16, 4)
 feats, coors = layer1(feats, coors, edges)
 feats, coors = layer2(feats, coors, edges) # (1, 16, 512), (1, 16, 3)
 ```
-
-## Todo
-
-- [ ] masking
-- [x] add integration with pytorch geometric
-- [x] add tests for se3 equivariance
-- [x] add an EGAT (attention flavored variant)
-
 
 ## Citations
 
