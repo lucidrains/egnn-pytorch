@@ -172,7 +172,7 @@ class EGNN_sparse(MessagePassing):
         coor_ri = self.aggregate(kwargs["rel_coors"], **aggr_kwargs)
         # return tuple
         update_kwargs = self.inspector.distribute('update', coll_dict)
-        coors_out  = kwargs["coors"] +  coor_wi + coor_ri
+        coors_out  = kwargs["coors"] + ( coor_wi * coor_ri )
         hidden_out = self.hidden_mlp( torch.cat([kwargs["x"], m_i], dim = -1) )
 
         return self.update((hidden_out, coors_out), **update_kwargs)
