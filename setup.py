@@ -6,7 +6,7 @@ setup(
   version = '0.0.7',
   license='MIT',
   description = 'E(n)-Equivariant Graph Neural Network - Pytorch',
-  author = 'Phil Wang',
+  author = 'Phil Wang, Eric Alcaide',
   author_email = 'lucidrains@gmail.com',
   url = 'https://github.com/lucidrains/egnn-pytorch',
   keywords = [
@@ -17,7 +17,12 @@ setup(
   ],
   install_requires=[
     'einops>=0.3',
-    'torch>=1.6'
+    'torch>=1.6', 
+    'torch-scatter',
+    'torch-sparse',
+    'torch-cluster',
+    'torch-spline-conv',
+    'torch-geometric'
   ],
   setup_requires=[
     'pytest-runner',
