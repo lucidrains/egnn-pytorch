@@ -40,19 +40,20 @@ class EGNN(nn.Module):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.ReLU(),
-            nn.Linear(edge_input_dim * 2, m_dim)
+            nn.SiLU(),
+            nn.Linear(edge_input_dim * 2, m_dim),
+            nn.SiLU()
         )
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
-        self.hidden_mlp = nn.Sequential(
+        self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(dim * 2, dim),
         )
 
@@ -82,10 +83,10 @@ class EGNN(nn.Module):
 
         m_i = m_ij.sum(dim = -2)
 
-        hidden_mlp_input = torch.cat((feats, m_i), dim = -1)
-        hidden_out = self.hidden_mlp(hidden_mlp_input)
+        node_mlp_input = torch.cat((feats, m_i), dim = -1)
+        node_out = self.node_mlp(node_mlp_input) + feats
 
-        return hidden_out, coors_out
+        return node_out, coors_out
 
 
 class EGNN_sparse(MessagePassing):
@@ -105,19 +106,20 @@ class EGNN_sparse(MessagePassing):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.ReLU(),
-            nn.Linear(edge_input_dim * 2, m_dim)
+            nn.SiLU(),
+            nn.Linear(edge_input_dim * 2, m_dim),
+            nn.SiLU()
         )
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
-        self.hidden_mlp = nn.Sequential(
+        self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         )
 
@@ -172,11 +174,15 @@ class EGNN_sparse(MessagePassing):
         coor_ri = self.aggregate(kwargs["rel_coors"], **aggr_kwargs)
         # return tuple
         update_kwargs = self.inspector.distribute('update', coll_dict)
-        coors_out  = kwargs["coors"] + ( coor_wi * coor_ri )
-        hidden_out = self.hidden_mlp( torch.cat([kwargs["x"], m_i], dim = -1) )
+
+        node, coors = kwargs["x"], kwargs["coors"]
+        coors_out  = coors + ( coor_wi * coor_ri )
+
+        hidden_out = self.node_mlp( torch.cat([node, m_i], dim = -1) )
+        hidden_out = hidden_out + node
 
         return self.update((hidden_out, coors_out), **update_kwargs)
-        
+
     def __repr__(self):
         dict_print = {}
         return "E(n)-GNN Layer for Graphs " + str(dict_print) 
