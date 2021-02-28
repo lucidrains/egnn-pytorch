@@ -23,6 +23,14 @@ def fourier_encode_dist(x, num_encodings = 4, include_self = True):
     x = torch.cat((x, orig_x), dim = -1) if include_self else x
     return x
 
+# swish activation fallback
+
+class Swish_(nn.Module):
+    def forward(self, x):
+        return x * x.sigmoid()
+
+SiLU = nn.SiLU if hasattr(nn, 'SiLU') else Swish_
+
 # classes
 
 class EGNN(nn.Module):
@@ -40,20 +48,20 @@ class EGNN(nn.Module):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
-            nn.SiLU()
+            SiLU()
         )
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(dim * 2, dim),
         )
 
@@ -106,20 +114,20 @@ class EGNN_sparse(MessagePassing):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
-            nn.SiLU()
+            SiLU()
         )
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
-            nn.SiLU(),
+            SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         )
 
