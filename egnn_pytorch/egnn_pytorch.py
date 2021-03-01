@@ -69,7 +69,7 @@ class EGNN(nn.Module):
         b, n, d, fourier_features = *feats.shape, self.fourier_features
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
-        rel_dist = rel_coors.norm(dim = -1, keepdim = True)
+        rel_dist = (rel_coors ** 2).sum(dim = -1, keepdim = True)
 
         if fourier_features > 0:
             rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
@@ -140,7 +140,7 @@ class EGNN_sparse(MessagePassing):
         coors, x = x[:, :self.pos_dim], x[:, self.pos_dim:]
         
         rel_coors = coors[edge_index[0]] - coors[edge_index[1]]
-        rel_dist  = torch.norm(rel_coors, dim=-1, keepdim=True)
+        rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)
 
         if self.fourier_features > 0:
             rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
