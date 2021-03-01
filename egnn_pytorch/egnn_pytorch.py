@@ -145,7 +145,8 @@ class EGNN_sparse(MessagePassing):
         if self.fourier_features > 0:
             rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
 
-        if edge_attr is None:
+        if exists(edge_attr):
+            print(edge_attr.shape)
             edge_attr = torch.cat([edge_attr, rel_dist], dim=-1)
         else:
             edge_attr = rel_dist
