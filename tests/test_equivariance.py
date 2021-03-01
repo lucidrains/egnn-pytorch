@@ -21,7 +21,7 @@ def test_egnn_equivariance():
 def test_geom_equivalence():
     layer = EGNN_sparse(feats_dim=128,
                     pos_dim = 3,
-                    edge_attr_dim = 0,
+                    edge_attr_dim = 4,
                     m_dim = 16,
                     fourier_features = 0)
 
