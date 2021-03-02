@@ -194,3 +194,114 @@ class EGNN_sparse(MessagePassing):
     def __repr__(self):
         dict_print = {}
         return "E(n)-GNN Layer for Graphs " + str(dict_print) 
+
+
+class EGNN_Sparse_Network(nn.Module):
+    r"""Sample GNN model architecture that uses the EGNN-Sparse
+        message passing layer to learn over point clouds. 
+        Main MPNN layer introduced in https://arxiv.org/abs/2102.09844v1
+
+        Inputs will be standard GNN: x, edge_index, edge_attr, batch, ...
+
+        Args:
+        * n_layers: int. number of MPNN layers
+        * ... : same interpretation as the base layer.
+        * embedding_nums: list. number of unique keys to embedd. for points
+                          1 entry per embedding needed. 
+        * embedding_dims: list. point - number of dimensions of
+                          the resulting embedding. 1 entry per embedding needed. 
+        * edge_embedding_nums: list. number of unique keys to embedd. for edges.
+                               1 entry per embedding needed. 
+        * edge_embedding_dims: list. point - number of dimensions of
+                               the resulting embedding. 1 entry per embedding needed. 
+        * recalc: bool. Whether to recalculate edge features between MPNN layers.
+        * verbose: bool. verbosity level.
+    """
+    def __init__(self, n_layers, feats_dim, pos_dim = 3,
+                       edge_attr_dim = 0, m_dim = 16,
+                       fourier_features = 0,
+                       embedding_nums=[], embedding_dims=[],
+                       edge_embedding_nums=[], edge_embedding_dims=[],
+                       recalc=True, verbose=False):
+        super().__init__()
+
+        self.n_layers         = n_layers 
+        # Embeddings? solve here
+        self.embedding_nums   = embedding_nums
+        self.embedding_dims   = embedding_dims
+        self.emb_layers       = torch.nn.ModuleList()
+        self.edge_embedding_nums = edge_embedding_nums
+        self.edge_embedding_dims = edge_embedding_dims
+        self.edge_emb_layers     = torch.nn.ModuleList()
+        # instantiate point and edge embedding layers
+        for i in range( len(self.embedding_dims) ):
+            self.emb_layers.append(nn.Embedding(num_embeddings = embedding_nums[i],
+                                                embedding_dim  = embedding_dims[i]))
+            feats_x_in += embedding_dims[i] - 1
+            feats_x_out += embedding_dims[i] - 1
+        for i in range( len(self.edge_embedding_dims) ):
+            self.edge_emb_layers.append(nn.Embedding(num_embeddings = edge_embedding_nums[i],
+                                                     embedding_dim  = edge_embedding_dims[i]))
+            feats_edge_in += edge_embedding_dims[i] - 1
+            feats_edge_out += edge_embedding_dims[i] - 1
+        # rest
+        self.mpnn_layers      = torch.nn.ModuleList()
+        self.feats_dim        = feats_dim
+        self.pos_dim          = pos_dim
+        self.edge_attr_dim    = edge_attr_dim
+        self.m_dim            = m_dim
+        self.fourier_features = fourier_features
+        self.recalc           = recalc
+        self.verbose          = verbose
+        
+        # instantiate layers
+        for i in range(n_layers):
+            layer = EGNN_sparse(feats_dim = feats_dim,
+                                pos_dim = pos_dim,
+                                edge_attr_dim = edge_attr_dim,
+                                m_dim = m_dim,
+                                fourier_features = fourier_features)
+            self.mpnn_layers.append(layer)
+
+    def forward(self, x, edge_index, batch, edge_attr,
+                bsize=None, recalc_edge=None, verbose=0):
+        """ Embedding of inputs when necessary, then pass layers.
+            Recalculate edge features every time with the
+            `recalc_edge` function if self.recalc_edge is set.
+        """
+        # pick to embedd. embedd sequentially and add to input - points:
+        to_embedd = x[:, -len(self.embedding_dims):].long()
+        for i,emb_layer in enumerate(self.emb_layers):
+            # the portion corresponding to `to_embedd` part gets dropped
+            # at first iter
+            stop_concat = -len(self.embedding_dims) if i == 0 else x.shape[-1]
+            x = torch.cat([ x[:, :stop_concat], 
+                            emb_layer( to_embedd[:, i] ) 
+                          ], dim=-1)
+        # pass layers
+        for i,layer in enumerate(self.mpnn_layers):
+            # embedd edge items (needed everytime since edge_attr and idxs
+            # are recalculated every pass)
+            to_embedd = edge_attr[:, -len(self.edge_embedding_dims):].long()
+            for i,edge_emb_layer in enumerate(self.edge_emb_layers):
+                # the portion corresponding to `to_embedd` part gets dropped
+                # at first iter
+                stop_concat = -len(self.edge_embedding_dims) if i == 0 else x.shape[-1]
+                edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + i], 
+                                        edge_emb_layer( to_embedd[:, i] ) 
+                              ], dim=-1)
+            # pass layers
+            x = layer(x, edge_index, edge_attr, size=bsize)
+
+            # recalculate edge info - not needed if last layer
+            if i < len(self.mpnn_layers)-1 and self.recalc:
+                edge_attr, edge_index, _ = recalc_edge(x.detach()) # returns attr, idx, embedd_info
+            
+            if verbose:
+                print("========")
+                print(i, "layer, nlinks:", edge_attr.shape)
+            
+        return x
+
+    def __repr__(self):
+        return 'EGNN_Sparse_Network of: {0} layers'.format(len(self.mpnn_layers))
