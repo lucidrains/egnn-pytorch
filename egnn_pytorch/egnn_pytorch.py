@@ -101,14 +101,13 @@ class EGNN_sparse(MessagePassing):
     def __init__(
         self,
         feats_dim,
-        pos_dim = 3,
         edge_attr_dim = 0,
         m_dim = 16,
         fourier_features = 0
     ):
         super().__init__()
         self.fourier_features = fourier_features
-        self.pos_dim = pos_dim
+        self.feats_dim = feats_dim
 
         edge_input_dim = (fourier_features * 2) + (feats_dim * 2) + edge_attr_dim + 1
 
@@ -137,22 +136,23 @@ class EGNN_sparse(MessagePassing):
             * x: (n_points, d) where d is pos_dims + feat_dims
             * edge_attr: tensor (n_edges, n_feats) excluding basic distance feats.
         """
-        coors, x = x[:, :self.pos_dim], x[:, self.pos_dim:]
+        x, coors = x[:, :self.feats_dim], x[:, self.feats_dim:]
         
         rel_coors = coors[edge_index[0]] - coors[edge_index[1]]
         rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)
 
         if self.fourier_features > 0:
-            rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
+            rel_dist = fourier_encode_dist(rel_dist, num_encodings = self.fourier_features)
+            rel_dist = rearrange(rel_dist, 'n () d -> n d')
 
         if exists(edge_attr):
             edge_attr = torch.cat([edge_attr, rel_dist], dim=-1)
         else:
             edge_attr = rel_dist
 
-        coors_out, hidden_out = self.propagate(edge_index, x=x, edge_attr=edge_attr,
+        hidden_out, coors_out = self.propagate(edge_index, x=x, edge_attr=edge_attr,
                                                            coors=coors, rel_coors=rel_coors)
-        return torch.cat([coors_out, hidden_out], dim=-1)
+        return torch.cat([hidden_out, coors_out], dim=-1)
 
 
     def message(self, x_i, x_j, edge_attr) -> Tensor:
@@ -226,26 +226,31 @@ class EGNN_Sparse_Network(nn.Module):
         super().__init__()
 
         self.n_layers         = n_layers 
+
         # Embeddings? solve here
         self.embedding_nums   = embedding_nums
         self.embedding_dims   = embedding_dims
-        self.emb_layers       = torch.nn.ModuleList()
+        self.emb_layers       = nn.ModuleList()
         self.edge_embedding_nums = edge_embedding_nums
         self.edge_embedding_dims = edge_embedding_dims
-        self.edge_emb_layers     = torch.nn.ModuleList()
+        self.edge_emb_layers     = nn.ModuleList()
+
         # instantiate point and edge embedding layers
+
         for i in range( len(self.embedding_dims) ):
             self.emb_layers.append(nn.Embedding(num_embeddings = embedding_nums[i],
                                                 embedding_dim  = embedding_dims[i]))
             feats_x_in += embedding_dims[i] - 1
             feats_x_out += embedding_dims[i] - 1
+
         for i in range( len(self.edge_embedding_dims) ):
             self.edge_emb_layers.append(nn.Embedding(num_embeddings = edge_embedding_nums[i],
                                                      embedding_dim  = edge_embedding_dims[i]))
             feats_edge_in += edge_embedding_dims[i] - 1
             feats_edge_out += edge_embedding_dims[i] - 1
+
         # rest
-        self.mpnn_layers      = torch.nn.ModuleList()
+        self.mpnn_layers      = nn.ModuleList()
         self.feats_dim        = feats_dim
         self.pos_dim          = pos_dim
         self.edge_attr_dim    = edge_attr_dim

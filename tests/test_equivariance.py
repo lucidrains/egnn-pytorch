@@ -18,16 +18,40 @@ def test_egnn_equivariance():
     assert torch.allclose(feats1, feats2, atol = 1e-6), 'type 0 features are invariant'
     assert torch.allclose(coors1, (coors2 @ R + T), atol = 1e-6), 'type 1 features are equivariant'
 
+def test_egnn_sparse_equivariance():
+    layer = EGNN_sparse(feats_dim = 1,
+                        m_dim = 16,
+                        fourier_features = 4)
+
+    R = rot(*torch.rand(3))
+    T = torch.randn(1, 1, 3)
+    apply_action = lambda t: (t @ R + T).squeeze()
+
+    feats = torch.randn(16, 1)
+    coors = torch.randn(16, 3)
+    edge_idxs = (torch.rand(2, 20) * 16).long()
+
+    x1 = torch.cat([feats, coors], dim=-1)
+    x2 = torch.cat([feats, apply_action(coors)], dim=-1)
+
+    out1 = layer(x=x1, edge_index=edge_idxs)
+    out2 = layer(x=x2, edge_index=edge_idxs)
+
+    feats1, coors1 = out1[:, 0:1], out1[:, 1:]
+    feats2, coors2 = out2[:, 0:1], out2[:, 1:]
+
+    assert torch.allclose(feats1, feats2), 'features must be invariant'
+    assert torch.allclose(apply_action(coors1), coors2), 'coordinates must be equivariant'
+
 def test_geom_equivalence():
     layer = EGNN_sparse(feats_dim=128,
-                    pos_dim = 3,
-                    edge_attr_dim = 4,
-                    m_dim = 16,
-                    fourier_features = 0)
+                        edge_attr_dim = 4,
+                        m_dim = 16,
+                        fourier_features = 4)
 
     feats = torch.randn(16, 128)
     coors = torch.randn(16, 3)
-    x     = torch.cat([coors, feats], dim=-1)
+    x     = torch.cat([feats, coors], dim=-1)
     edge_idxs   = (torch.rand(2, 20) * 16 ).long()
     edges_attrs = torch.randn(16, 16, 4)
     edges_attrs = edges_attrs[edge_idxs[0], edge_idxs[1]] 
