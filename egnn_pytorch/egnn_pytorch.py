@@ -14,6 +14,22 @@ from torch_geometric.typing import Adj, Size, OptTensor, Tensor
 def exists(val):
     return val is not None
 
+def batched_index_select(values, indices, dim = 1):
+    value_dims = values.shape[(dim + 1):]
+    values_shape, indices_shape = map(lambda t: list(t.shape), (values, indices))
+    indices = indices[(..., *((None,) * len(value_dims)))]
+    indices = indices.expand(*((-1,) * len(indices_shape)), *value_dims)
+    value_expand_len = len(indices_shape) - (dim + 1)
+    values = values[(*((slice(None),) * dim), *((None,) * value_expand_len), ...)]
+
+    value_expand_shape = [-1] * len(values.shape)
+    expand_slice = slice(dim, (dim + value_expand_len))
+    value_expand_shape[expand_slice] = indices.shape[expand_slice]
+    values = values.expand(*value_expand_shape)
+
+    dim += value_expand_len
+    return values.gather(dim, indices)
+
 def fourier_encode_dist(x, num_encodings = 4, include_self = True):
     x = x.unsqueeze(-1)
     device, dtype, orig_x = x.device, x.dtype, x
@@ -40,7 +56,8 @@ class EGNN(nn.Module):
         edge_dim = 0,
         m_dim = 16,
         fourier_features = 0,
-        norm_rel_coors = False
+        norm_rel_coors = False,
+        num_nearest_neighbors = 0
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -74,18 +91,37 @@ class EGNN(nn.Module):
         # seems to be needed to keep the network from exploding to NaN with greater depths
         last_coor_linear.weight.data.fill_(0)
 
-    def forward(self, feats, coors, edges = None):
-        b, n, d, fourier_features = *feats.shape, self.fourier_features
+        self.num_nearest_neighbors = num_nearest_neighbors
+
+    def forward(self, feats, coors, edges = None, mask = None):
+        b, n, d, fourier_features, num_nearest = *feats.shape, self.fourier_features, self.num_nearest_neighbors
+        use_nearest = num_nearest > 0
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
         rel_dist = (rel_coors ** 2).sum(dim = -1, keepdim = True)
+
+        i = j = n
+
+        if use_nearest:
+            nbhd_indices = rel_dist[..., 0].topk(num_nearest, dim = -1, largest = False).indices
+            rel_coors = batched_index_select(rel_coors, nbhd_indices, dim = 2)
+            rel_dist = batched_index_select(rel_dist, nbhd_indices, dim = 2)
+
+            if exists(edges):
+                edges = batched_index_select(edges, nbhd_indices, dim = 2)
+
+            j = num_nearest
 
         if fourier_features > 0:
             rel_dist = fourier_encode_dist(rel_dist, num_encodings = fourier_features)
             rel_dist = rearrange(rel_dist, 'b i j () d -> b i j d')
 
-        feats_i = repeat(feats, 'b i d -> b i n d', n = n)
-        feats_j = repeat(feats, 'b j d -> b n j d', n = n)
+        if use_nearest:
+            feats_j = batched_index_select(feats, nbhd_indices, dim = 1)
+        else:
+            feats_j = repeat(feats, 'b j d -> b i j d', i = i)
+
+        feats_i = repeat(feats, 'b i d -> b i j d', j = j)
         edge_input = torch.cat((feats_i, feats_j, rel_dist), dim = -1)
 
         if exists(edges):
@@ -98,6 +134,14 @@ class EGNN(nn.Module):
 
         if self.norm_rel_coors:
             rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
+
+        if exists(mask):
+            if use_nearest:
+                mask = batched_index_select(mask, nbhd_indices, dim = 1)
+            else:
+                mask = rearrange(mask, 'b j -> b () j')
+
+            coor_weights.masked_fill_(~mask, 0.)
 
         coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
 
