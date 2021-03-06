@@ -39,7 +39,8 @@ class EGNN(nn.Module):
         dim,
         edge_dim = 0,
         m_dim = 16,
-        fourier_features = 0
+        fourier_features = 0,
+        norm_rel_coors = False
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -58,6 +59,10 @@ class EGNN(nn.Module):
             SiLU(),
             nn.Linear(dim * 2, dim),
         )
+
+        self.norm_rel_coors = norm_rel_coors
+        if norm_rel_coors:
+            self.rel_coors_scale = nn.Parameter(torch.ones(1))
 
         last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
@@ -90,6 +95,9 @@ class EGNN(nn.Module):
 
         coor_weights = self.coors_mlp(m_ij)
         coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
+
+        if self.norm_rel_coors:
+            rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
 
         coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
 
