@@ -53,17 +53,21 @@ class EGNN(nn.Module):
             SiLU()
         )
 
-        self.coors_mlp = nn.Sequential(
-            nn.Linear(m_dim, m_dim * 4),
-            SiLU(),
-            nn.Linear(m_dim * 4, 1)
-        )
-
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
             SiLU(),
             nn.Linear(dim * 2, dim),
         )
+
+        last_coor_linear = nn.Linear(m_dim * 4, 1)
+        self.coors_mlp = nn.Sequential(
+            nn.Linear(m_dim, m_dim * 4),
+            SiLU(),
+            last_coor_linear
+        )
+
+        # seems to be needed to keep the network from exploding to NaN with greater depths
+        last_coor_linear.weight.data.fill_(0)
 
     def forward(self, feats, coors, edges = None):
         b, n, d, fourier_features = *feats.shape, self.fourier_features
