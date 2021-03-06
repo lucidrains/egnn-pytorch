@@ -136,11 +136,14 @@ class EGNN(nn.Module):
             rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
 
         if exists(mask):
-            if use_nearest:
-                mask = batched_index_select(mask, nbhd_indices, dim = 1)
-            else:
-                mask = rearrange(mask, 'b j -> b () j')
+            mask_i = rearrange(mask, 'b i -> b i ()')
 
+            if use_nearest:
+                mask_j = batched_index_select(mask, nbhd_indices, dim = 1)
+            else:
+                mask_j = rearrange(mask, 'b j -> b () j')
+
+            mask = mask_i * mask_j
             coor_weights.masked_fill_(~mask, 0.)
 
         coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
