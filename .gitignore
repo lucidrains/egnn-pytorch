@@ -6,9 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
-# mac files
+# mac files and custom data for examples
 *.DS_Store
 .DS_Store
+*sidechainnet_data/*
+*.pkl
 
 # Distribution / packaging
 .Python
