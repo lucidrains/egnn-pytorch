@@ -65,10 +65,11 @@ class EGNN(nn.Module):
         self.fourier_features = fourier_features
 
         edge_input_dim = (fourier_features * 2) + (dim * 2) + edge_dim + 1
+        dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
@@ -76,7 +77,7 @@ class EGNN(nn.Module):
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             nn.Linear(dim * 2, dim),
         )
@@ -88,7 +89,7 @@ class EGNN(nn.Module):
         last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             last_coor_linear
         )
@@ -179,10 +180,11 @@ class EGNN_sparse(MessagePassing):
         self.pos_dim = pos_dim
 
         edge_input_dim = (fourier_features * 2) + (feats_dim * 2) + edge_attr_dim + 1
+        dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
@@ -190,14 +192,14 @@ class EGNN_sparse(MessagePassing):
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
-            nn.Dropout(dropout),
+            dropout,
             SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         )
