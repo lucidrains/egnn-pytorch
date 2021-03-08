@@ -1,5 +1,6 @@
 import torch
 from torch import nn, einsum, broadcast_tensors
+import torch.nn.functional as F
 
 from einops import rearrange
 from einops.layers.torch import Rearrange
