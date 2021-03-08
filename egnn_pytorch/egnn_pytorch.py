@@ -63,13 +63,12 @@ class EGNN(nn.Module):
     ):
         super().__init__()
         self.fourier_features = fourier_features
-        self.drop = nn.Dropout(dropout)
 
         edge_input_dim = (fourier_features * 2) + (dim * 2) + edge_dim + 1
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
-            self.drop,
+            nn.Dropout(dropout),
             SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
@@ -77,7 +76,7 @@ class EGNN(nn.Module):
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
-            self.drop,
+            nn.Dropout(dropout),
             SiLU(),
             nn.Linear(dim * 2, dim),
         )
@@ -89,7 +88,7 @@ class EGNN(nn.Module):
         last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            self.drop,
+            nn.Dropout(dropout),
             SiLU(),
             last_coor_linear
         )
@@ -171,7 +170,8 @@ class EGNN_sparse(MessagePassing):
         pos_dim=3,
         edge_attr_dim = 0,
         m_dim = 16,
-        fourier_features = 0
+        fourier_features = 0,
+        dropout = 0.
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -182,6 +182,7 @@ class EGNN_sparse(MessagePassing):
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
+            nn.Dropout(dropout),
             SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
@@ -189,12 +190,14 @@ class EGNN_sparse(MessagePassing):
 
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
+            nn.Dropout(dropout),
             SiLU(),
             nn.Linear(m_dim * 4, 1)
         )
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
+            nn.Dropout(dropout),
             SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         )
