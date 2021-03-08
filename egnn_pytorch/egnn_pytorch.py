@@ -199,7 +199,7 @@ class EGNN_sparse(MessagePassing):
             * x: (n_points, d) where d is pos_dims + feat_dims
             * edge_attr: tensor (n_edges, n_feats) excluding basic distance feats.
         """
-        x, coors = x[:, self.pos_dim:], x[:, :self.pos_dim]
+        x, coors = x[:, :-self.pos_dim], x[:, -self.pos_dim:]
         
         rel_coors = coors[edge_index[0]] - coors[edge_index[1]]
         rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)**0.5
