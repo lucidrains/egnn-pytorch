@@ -58,15 +58,18 @@ class EGNN(nn.Module):
         m_dim = 16,
         fourier_features = 0,
         norm_rel_coors = False,
-        num_nearest_neighbors = 0
+        num_nearest_neighbors = 0,
+        dropout = 0.0
     ):
         super().__init__()
         self.fourier_features = fourier_features
+        self.drop = nn.Dropout(dropout)
 
         edge_input_dim = (fourier_features * 2) + (dim * 2) + edge_dim + 1
 
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
+            self.drop,
             SiLU(),
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
@@ -74,6 +77,7 @@ class EGNN(nn.Module):
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
+            self.drop,
             SiLU(),
             nn.Linear(dim * 2, dim),
         )
@@ -85,6 +89,7 @@ class EGNN(nn.Module):
         last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
+            self.drop,
             SiLU(),
             last_coor_linear
         )
