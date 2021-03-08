@@ -58,6 +58,7 @@ class EGNN(nn.Module):
         m_dim = 16,
         fourier_features = 0,
         norm_rel_coors = False,
+        norm_coor_weights = False,
         num_nearest_neighbors = 0,
         dropout = 0.0
     ):
@@ -82,6 +83,7 @@ class EGNN(nn.Module):
             nn.Linear(dim * 2, dim),
         )
 
+        self.norm_coor_weights = norm_coor_weights
         self.norm_rel_coors = norm_rel_coors
         if norm_rel_coors:
             self.rel_coors_scale = nn.Parameter(torch.ones(1))
@@ -139,6 +141,9 @@ class EGNN(nn.Module):
 
         coor_weights = self.coors_mlp(m_ij)
         coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
+
+        if self.norm_coor_weights:
+            coor_weights = coor_weights.tanh()
 
         if self.norm_rel_coors:
             rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
