@@ -105,7 +105,7 @@ class EGNN(nn.Module):
     def init_(self, module):
         if type(module) in {nn.Linear}:
             # seems to be needed to keep the network from exploding to NaN with greater depths
-            module.weight.data.fill_(self.init_eps)
+            nn.init.normal_(module.weight, std = self.init_eps)
 
     def forward(self, feats, coors, edges = None, mask = None):
         b, n, d, fourier_features, num_nearest = *feats.shape, self.fourier_features, self.num_nearest_neighbors
