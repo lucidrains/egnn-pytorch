@@ -62,6 +62,15 @@ class EGNN(nn.Module):
         num_nearest_neighbors = 0,
         dropout = 0.0
     ):
+        
+        def _fill_weight(network, value):
+            if isinstance(network. nn.Linear):
+                network.weight.data.fill_(value)
+            else:
+                for layer in network:
+                    if isinstance(i, nn.Linear):
+                        layer.weight.data.fill_(value)
+        
         super().__init__()
         self.fourier_features = fourier_features
 
@@ -97,7 +106,8 @@ class EGNN(nn.Module):
         )
 
         # seems to be needed to keep the network from exploding to NaN with greater depths
-        last_coor_linear.weight.data.fill_(0)
+        _fill_weight(self.edge_mlp, 0.001)
+        _fill_weight(last_coor_linear, 0.001)
 
         self.num_nearest_neighbors = num_nearest_neighbors
 
