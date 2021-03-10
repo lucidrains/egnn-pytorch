@@ -170,6 +170,10 @@ class EGNN(nn.Module):
 
 
 class EGNN_sparse(MessagePassing):
+    """ Different from the above since it separates the edge assignment
+        from the computation (this allows for great reduction in time and 
+        computations when the graph is locally or sparse connected).
+    """
     def __init__(
         self,
         feats_dim,
@@ -177,6 +181,8 @@ class EGNN_sparse(MessagePassing):
         edge_attr_dim = 0,
         m_dim = 16,
         fourier_features = 0,
+        norm_rel_coors = False,
+        norm_coor_weights = False,
         dropout = 0.
     ):
         super().__init__()
@@ -195,19 +201,29 @@ class EGNN_sparse(MessagePassing):
             SiLU()
         )
 
-        self.coors_mlp = nn.Sequential(
-            nn.Linear(m_dim, m_dim * 4),
-            dropout,
-            SiLU(),
-            nn.Linear(m_dim * 4, 1)
-        )
-
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
             dropout,
             SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         )
+
+        self.norm_coor_weights = norm_coor_weights
+        self.norm_rel_coors = norm_rel_coors
+        if norm_rel_coors:
+            self.rel_coors_scale = nn.Parameter(torch.ones(1))
+
+        last_coor_linear = nn.Linear(m_dim * 4, 1)
+        self.coors_mlp = nn.Sequential(
+            nn.Linear(m_dim, m_dim * 4),
+            dropout,
+            SiLU(),
+            last_coor_linear
+        )
+        # seems to be needed to keep the network from exploding to NaN with greater depths
+        last_coor_linear.weight.data.fill_(0)
+
+        
 
     def forward(self, x: Tensor, edge_index: Adj,
                 edge_attr: OptTensor = None, size: Size = None) -> Tensor:
@@ -261,6 +277,13 @@ class EGNN_sparse(MessagePassing):
         coor_ri = self.aggregate(kwargs["rel_coors"], **aggr_kwargs)
         # return tuple
         update_kwargs = self.inspector.distribute('update', coll_dict)
+
+        # normalize if needed
+        if self.norm_rel_coors:
+            coor_ri = F.normalize(coor_ri, dim = -1) * self.rel_coors_scale
+
+        if self.norm_coor_weights:
+            coor_wi = coor_wi.tanh()
 
         node, coors = kwargs["x"], kwargs["coors"]
         coors_out  = coors + ( coor_wi * coor_ri )
