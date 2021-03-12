@@ -60,7 +60,8 @@ class EGNN(nn.Module):
         norm_rel_coors = False,
         norm_coor_weights = False,
         num_nearest_neighbors = 0,
-        dropout = 0.0
+        dropout = 0.0,
+        init_eps = 1e-3
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -85,21 +86,26 @@ class EGNN(nn.Module):
 
         self.norm_coor_weights = norm_coor_weights
         self.norm_rel_coors = norm_rel_coors
+
         if norm_rel_coors:
             self.rel_coors_scale = nn.Parameter(torch.ones(1))
 
-        last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
             dropout,
             SiLU(),
-            last_coor_linear
+            nn.Linear(m_dim * 4, 1)
         )
 
-        # seems to be needed to keep the network from exploding to NaN with greater depths
-        last_coor_linear.weight.data.fill_(0)
-
         self.num_nearest_neighbors = num_nearest_neighbors
+
+        self.init_eps = init_eps
+        self.apply(self.init_)
+
+    def init_(self, module):
+        if type(module) in {nn.Linear}:
+            # seems to be needed to keep the network from exploding to NaN with greater depths
+            nn.init.normal_(module.weight, std = self.init_eps)
 
     def forward(self, feats, coors, edges = None, mask = None):
         b, n, d, fourier_features, num_nearest = *feats.shape, self.fourier_features, self.num_nearest_neighbors
