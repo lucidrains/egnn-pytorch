@@ -190,7 +190,7 @@ class EGNN_sparse(MessagePassing):
         norm_rel_coors = False,
         norm_coor_weights = False,
         dropout = 0.,
-        init_eps =
+        init_eps = 1e-3
     ):
         super().__init__()
         self.fourier_features = fourier_features
