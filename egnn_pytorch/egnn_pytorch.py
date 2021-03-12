@@ -189,7 +189,8 @@ class EGNN_sparse(MessagePassing):
         fourier_features = 0,
         norm_rel_coors = False,
         norm_coor_weights = False,
-        dropout = 0.
+        dropout = 0.,
+        init_eps =
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -224,12 +225,16 @@ class EGNN_sparse(MessagePassing):
             nn.Linear(m_dim, m_dim * 4),
             dropout,
             SiLU(),
-            last_coor_linear
+            nn.Linear(m_dim * 4, 1)
         )
         # seems to be needed to keep the network from exploding to NaN with greater depths
-        last_coor_linear.weight.data.fill_(0)
+        self.init_eps = init_eps
+        self.apply(self.init_)
 
-        
+    def init_(self, module):
+        if type(module) in {nn.Linear}:
+            # seems to be needed to keep the network from exploding to NaN with greater depths
+            nn.init.normal_(module.weight, std = self.init_eps)
 
     def forward(self, x: Tensor, edge_index: Adj,
                 edge_attr: OptTensor = None, size: Size = None) -> Tensor:
