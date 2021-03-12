@@ -316,7 +316,7 @@ class EGNN_Sparse_Network(nn.Module):
                                1 entry per embedding needed. 
         * edge_embedding_dims: list. point - number of dimensions of
                                the resulting embedding. 1 entry per embedding needed. 
-        * recalc: bool. Whether to recalculate edge features between MPNN layers.
+        * recalc: int. Recalculate edge feats every `recalc` MPNN layers.
         * verbose: bool. verbosity level.
     """
     def __init__(self, n_layers, feats_dim, pos_dim = 3,
@@ -324,7 +324,7 @@ class EGNN_Sparse_Network(nn.Module):
                        fourier_features = 0,
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
-                       recalc=True, verbose=False):
+                       recalc=1, verbose=False):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -401,8 +401,8 @@ class EGNN_Sparse_Network(nn.Module):
             x = layer(x, edge_index, edge_attr, size=bsize)
 
             # recalculate edge info - not needed if last layer
-            if i < len(self.mpnn_layers)-1 and self.recalc:
-                edge_attr, edge_index, _ = recalc_edge(x.detach()) # returns attr, idx, embedd_info
+            if (1%self.recalc == 0) and not (i == self.mpnn_layers-1) :
+                edge_attr, edge_index, _ = recalc_edge(x) # returns attr, idx, embedd_info
             else: 
                 edge_attr = original_edge_attr.clone()
                 edge_index = original_edge_index.clone()
