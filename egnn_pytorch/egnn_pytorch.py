@@ -412,7 +412,7 @@ class EGNN_Sparse_Network(nn.Module):
             x = layer(x, edge_index, edge_attr, size=bsize)
 
             # recalculate edge info - not needed if last layer
-            if (1%self.recalc == 0) and not (i == self.mpnn_layers-1) :
+            if self.recalc and ((i%self.recalc == 0) and not (i == self.mpnn_layers-1)) :
                 edge_attr, edge_index, _ = recalc_edge(x) # returns attr, idx, embedd_info
             else: 
                 edge_attr = original_edge_attr.clone()
