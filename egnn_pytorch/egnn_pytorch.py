@@ -411,7 +411,7 @@ class EGNN_Sparse_Network(nn.Module):
                 edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + i], 
                                         edge_emb_layer( to_embedd[:, i] ) 
                               ], dim=-1)
-                stop_concat = 
+                stop_concat = x.shape[-1]
             # pass layers
             x = layer(x, edge_index, edge_attr, size=bsize)
 
