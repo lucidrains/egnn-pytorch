@@ -49,14 +49,14 @@ def test_egnn_sparse_equivariance():
     coors = torch.randn(16, 3)
     edge_idxs = (torch.rand(2, 20) * 16).long()
 
-    x1 = torch.cat([feats, coors], dim=-1)
-    x2 = torch.cat([feats, apply_action(coors)], dim=-1)
+    x1 = torch.cat([coors, feats], dim=-1)
+    x2 = torch.cat([apply_action(coors), feats], dim=-1)
 
     out1 = layer(x=x1, edge_index=edge_idxs)
     out2 = layer(x=x2, edge_index=edge_idxs)
 
-    feats1, coors1 = out1[:, :1], out1[:, 1:]
-    feats2, coors2 = out2[:, :1], out2[:, 1:]
+    feats1, coors1 = out1[:, 3:], out1[:, :3]
+    feats2, coors2 = out2[:, 3:], out2[:, :3]
 
     print(feats1 - feats2)
     assert torch.allclose(feats1, feats2), 'features must be invariant'
@@ -70,9 +70,11 @@ def test_geom_equivalence():
 
     feats = torch.randn(16, 128)
     coors = torch.randn(16, 3)
-    x     = torch.cat([feats, coors], dim=-1)
+    x     = torch.cat([coors, feats], dim=-1)
     edge_idxs   = (torch.rand(2, 20) * 16 ).long()
     edges_attrs = torch.randn(16, 16, 4)
     edges_attrs = edges_attrs[edge_idxs[0], edge_idxs[1]] 
 
     assert layer.forward(x, edge_idxs, edge_attr=edges_attrs).shape == x.shape
+
+

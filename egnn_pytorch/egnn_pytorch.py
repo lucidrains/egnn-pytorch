@@ -189,7 +189,8 @@ class EGNN_sparse(MessagePassing):
         fourier_features = 0,
         norm_rel_coors = False,
         norm_coor_weights = False,
-        dropout = 0.
+        dropout = 0.,
+        init_eps = 1e-3
     ):
         super().__init__()
         self.fourier_features = fourier_features
@@ -224,12 +225,16 @@ class EGNN_sparse(MessagePassing):
             nn.Linear(m_dim, m_dim * 4),
             dropout,
             SiLU(),
-            last_coor_linear
+            nn.Linear(m_dim * 4, 1)
         )
         # seems to be needed to keep the network from exploding to NaN with greater depths
-        last_coor_linear.weight.data.fill_(0)
+        self.init_eps = init_eps
+        self.apply(self.init_)
 
-        
+    def init_(self, module):
+        if type(module) in {nn.Linear}:
+            # seems to be needed to keep the network from exploding to NaN with greater depths
+            nn.init.normal_(module.weight, std = self.init_eps)
 
     def forward(self, x: Tensor, edge_index: Adj,
                 edge_attr: OptTensor = None, size: Size = None) -> Tensor:
@@ -237,7 +242,7 @@ class EGNN_sparse(MessagePassing):
             * x: (n_points, d) where d is pos_dims + feat_dims
             * edge_attr: tensor (n_edges, n_feats) excluding basic distance feats.
         """
-        x, coors = x[:, :-self.pos_dim], x[:, -self.pos_dim:]
+        coors, feats = x[:, :self.pos_dim], x[:, self.pos_dim:]
         
         rel_coors = coors[edge_index[0]] - coors[edge_index[1]]
         rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)**0.5
@@ -251,9 +256,9 @@ class EGNN_sparse(MessagePassing):
         else:
             edge_attr_feats = rel_dist
 
-        hidden_out, coors_out = self.propagate(edge_index, x=x, edge_attr=edge_attr_feats,
+        hidden_out, coors_out = self.propagate(edge_index, x=feats, edge_attr=edge_attr_feats,
                                                            coors=coors, rel_coors=rel_coors)
-        return torch.cat([hidden_out, coors_out], dim=-1)
+        return torch.cat([coors_out, hidden_out], dim=-1)
 
 
     def message(self, x_i, x_j, edge_attr) -> Tensor:
@@ -322,7 +327,7 @@ class EGNN_Sparse_Network(nn.Module):
                                1 entry per embedding needed. 
         * edge_embedding_dims: list. point - number of dimensions of
                                the resulting embedding. 1 entry per embedding needed. 
-        * recalc: bool. Whether to recalculate edge features between MPNN layers.
+        * recalc: int. Recalculate edge feats every `recalc` MPNN layers.
         * verbose: bool. verbosity level.
     """
     def __init__(self, n_layers, feats_dim, pos_dim = 3,
@@ -330,7 +335,7 @@ class EGNN_Sparse_Network(nn.Module):
                        fourier_features = 0,
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
-                       recalc=True, verbose=False):
+                       recalc=1, verbose=False):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -370,7 +375,9 @@ class EGNN_Sparse_Network(nn.Module):
                                 pos_dim = pos_dim,
                                 edge_attr_dim = edge_attr_dim,
                                 m_dim = m_dim,
-                                fourier_features = fourier_features)
+                                fourier_features = fourier_features, 
+                                norm_rel_coors=True,
+                                norm_coor_weights=True)
             self.mpnn_layers.append(layer)
 
     def forward(self, x, edge_index, batch, edge_attr,
@@ -383,32 +390,34 @@ class EGNN_Sparse_Network(nn.Module):
         original_edge_index = edge_index.clone()
         original_edge_attr = edge_attr.clone()
         # pick to embedd. embedd sequentially and add to input - points:
-        to_embedd = x[:, -len(self.embedding_dims):].long()
+        stop_concat = -len(self.embedding_dims)
+        to_embedd = x[:, stop_concat:].long()
         for i,emb_layer in enumerate(self.emb_layers):
             # the portion corresponding to `to_embedd` part gets dropped
             # at first iter
-            stop_concat = -len(self.embedding_dims) if i == 0 else x.shape[-1]
             x = torch.cat([ x[:, :stop_concat], 
                             emb_layer( to_embedd[:, i] ) 
                           ], dim=-1)
+            stop_concat = x.shape[-1]
         # pass layers
         for i,layer in enumerate(self.mpnn_layers):
             # embedd edge items (needed everytime since edge_attr and idxs
             # are recalculated every pass)
-            to_embedd = edge_attr[:, -len(self.edge_embedding_dims):].long()
+            stop_concat = -len(self.edge_embedding_dims)
+            to_embedd = edge_attr[:, stop_concat:].long()
             for i,edge_emb_layer in enumerate(self.edge_emb_layers):
                 # the portion corresponding to `to_embedd` part gets dropped
                 # at first iter
-                stop_concat = -len(self.edge_embedding_dims) if i == 0 else x.shape[-1]
                 edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + i], 
                                         edge_emb_layer( to_embedd[:, i] ) 
                               ], dim=-1)
+                stop_concat = x.shape[-1]
             # pass layers
             x = layer(x, edge_index, edge_attr, size=bsize)
 
             # recalculate edge info - not needed if last layer
-            if i < len(self.mpnn_layers)-1 and self.recalc:
-                edge_attr, edge_index, _ = recalc_edge(x.detach()) # returns attr, idx, embedd_info
+            if self.recalc and ((i%self.recalc == 0) and not (i == self.mpnn_layers-1)) :
+                edge_attr, edge_index, _ = recalc_edge(x) # returns attr, idx, embedd_info
             else: 
                 edge_attr = original_edge_attr.clone()
                 edge_index = original_edge_index.clone()
