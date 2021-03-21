@@ -327,7 +327,7 @@ class EGNN_Sparse_Network(nn.Module):
                                1 entry per embedding needed. 
         * edge_embedding_dims: list. point - number of dimensions of
                                the resulting embedding. 1 entry per embedding needed. 
-        * recalc: int. Recalculate edge feats every `recalc` MPNN layers.
+        * recalc: int. Recalculate edge feats every `recalc` MPNN layers. 0 for no recalc
         * verbose: bool. verbosity level.
     """
     def __init__(self, n_layers, feats_dim, pos_dim = 3,
@@ -335,7 +335,8 @@ class EGNN_Sparse_Network(nn.Module):
                        fourier_features = 0,
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
-                       recalc=1, verbose=False):
+                       norm_rel_coors=False, norm_coor_weights=False,
+                       recalc=0, verbose=False):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -366,6 +367,8 @@ class EGNN_Sparse_Network(nn.Module):
         self.edge_attr_dim    = edge_attr_dim
         self.m_dim            = m_dim
         self.fourier_features = fourier_features
+        self.norm_rel_coors   = norm_rel_coors
+        self.norm_coor_weights= norm_coor_weights
         self.recalc           = recalc
         self.verbose          = verbose
         
@@ -376,8 +379,8 @@ class EGNN_Sparse_Network(nn.Module):
                                 edge_attr_dim = edge_attr_dim,
                                 m_dim = m_dim,
                                 fourier_features = fourier_features, 
-                                norm_rel_coors=True,
-                                norm_coor_weights=True)
+                                norm_rel_coors=norm_rel_coors,
+                                norm_coor_weights=norm_coor_weights)
             self.mpnn_layers.append(layer)
 
     def forward(self, x, edge_index, batch, edge_attr,
@@ -405,19 +408,19 @@ class EGNN_Sparse_Network(nn.Module):
             # are recalculated every pass)
             stop_concat = -len(self.edge_embedding_dims)
             to_embedd = edge_attr[:, stop_concat:].long()
-            for i,edge_emb_layer in enumerate(self.edge_emb_layers):
+            for j,edge_emb_layer in enumerate(self.edge_emb_layers):
                 # the portion corresponding to `to_embedd` part gets dropped
                 # at first iter
-                edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + i], 
-                                        edge_emb_layer( to_embedd[:, i] ) 
+                edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + j], 
+                                        edge_emb_layer( to_embedd[:, j] ) 
                               ], dim=-1)
                 stop_concat = x.shape[-1]
             # pass layers
             x = layer(x, edge_index, edge_attr, size=bsize)
 
             # recalculate edge info - not needed if last layer
-            if self.recalc and ((i%self.recalc == 0) and not (i == self.mpnn_layers-1)) :
-                edge_attr, edge_index, _ = recalc_edge(x) # returns attr, idx, embedd_info
+            if self.recalc and ((i%self.recalc == 0) and not (i == len(self.mpnn_layers)-1)) :
+                edge_index, edge_attr, _ = recalc_edge(x) # returns attr, idx, any_other_info
             else: 
                 edge_attr = original_edge_attr.clone()
                 edge_index = original_edge_index.clone()
