@@ -245,7 +245,7 @@ class EGNN_sparse(MessagePassing):
         coors, feats = x[:, :self.pos_dim], x[:, self.pos_dim:]
         
         rel_coors = coors[edge_index[0]] - coors[edge_index[1]]
-        rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)**0.5
+        rel_dist  = (rel_coors ** 2).sum(dim=-1, keepdim=True)
 
         if self.fourier_features > 0:
             rel_dist = fourier_encode_dist(rel_dist, num_encodings = self.fourier_features)
