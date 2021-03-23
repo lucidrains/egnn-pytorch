@@ -59,7 +59,7 @@ def test_egnn_sparse_equivariance():
     feats2, coors2 = out2[:, 3:], out2[:, :3]
 
     print(feats1 - feats2)
-    print(apply_action(coors1), coors2)
+    print(apply_action(coors1) - coors2)
     assert torch.allclose(feats1, feats2), 'features must be invariant'
     assert torch.allclose(apply_action(coors1), coors2), 'coordinates must be equivariant'
 

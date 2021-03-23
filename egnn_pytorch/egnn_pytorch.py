@@ -281,27 +281,28 @@ class EGNN_sparse(MessagePassing):
                                      edge_index, size, kwargs)
         msg_kwargs = self.inspector.distribute('message', coll_dict)
         m_ij, coor_wij = self.message(**msg_kwargs)
-        # aggregate them
-        aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
-        m_i     = self.aggregate(m_ij, **aggr_kwargs)
-        coor_wi = self.aggregate(coor_wij, **aggr_kwargs)
-        coor_ri = self.aggregate(kwargs["rel_coors"], **aggr_kwargs)
-        # return tuple
-        update_kwargs = self.inspector.distribute('update', coll_dict)
 
         # normalize if needed
         if self.norm_rel_coors:
-            coor_ri = F.normalize(coor_ri, dim = -1) * self.rel_coors_scale
+            kwargs["rel_coors"] = F.normalize(kwargs["rel_coors"], dim = -1) * self.rel_coors_scale
 
         if self.norm_coor_weights:
-            coor_wi = coor_wi.tanh()
+            coor_wij = coor_wij.tanh()
 
+        # aggregate them
+        aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
+        m_i     = self.aggregate(m_ij, **aggr_kwargs)
+        mhat_i  = self.aggregate(coor_wij * kwargs["rel_coors"], **aggr_kwargs)
+
+        # update node and coors
         node, coors = kwargs["x"], kwargs["coors"]
-        coors_out  = coors + ( coor_wi * coor_ri )
+        coors_out  = coors + mhat_i
 
         hidden_out = self.node_mlp( torch.cat([node, m_i], dim = -1) )
         hidden_out = hidden_out + node
 
+        # return tuple
+        update_kwargs = self.inspector.distribute('update', coll_dict)
         return self.update((hidden_out, coors_out), **update_kwargs)
 
     def __repr__(self):
