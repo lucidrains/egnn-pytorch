@@ -201,19 +201,27 @@ class EGNN_sparse(MessagePassing):
         edge_attr_dim = 0,
         m_dim = 16,
         fourier_features = 0,
+        update_coors = True, 
+        update_feats = True,
+        norm_feats = False,
         norm_rel_coors = False,
         norm_coor_weights = False,
         dropout = 0.,
         init_eps = 1e-3
     ):
         super().__init__()
+        # model params
         self.fourier_features = fourier_features
         self.feats_dim = feats_dim
         self.pos_dim = pos_dim
+        self.norm_feats = norm_feats
+        self.update_coors = update_coors
+        self.update_feats = update_feats
 
         edge_input_dim = (fourier_features * 2) + (feats_dim * 2) + edge_attr_dim + 1
         dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+        # EDGES
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_input_dim, edge_input_dim * 2),
             dropout,
@@ -222,13 +230,17 @@ class EGNN_sparse(MessagePassing):
             SiLU()
         )
 
+        # NODES
+        self.node_norm = nn.LayerNorm(feats_dim) if norm_feats else nn.Identity()
+
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
             dropout,
             SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
-        )
+        ) if update_feats else None
 
+        # COORS
         self.norm_coor_weights = norm_coor_weights
         self.norm_rel_coors = norm_rel_coors
         if norm_rel_coors:
@@ -240,7 +252,7 @@ class EGNN_sparse(MessagePassing):
             dropout,
             SiLU(),
             nn.Linear(m_dim * 4, 1)
-        )
+        ) if update_coors else None
         # seems to be needed to keep the network from exploding to NaN with greater depths
         self.init_eps = init_eps
         self.apply(self.init_)
@@ -277,8 +289,7 @@ class EGNN_sparse(MessagePassing):
 
     def message(self, x_i, x_j, edge_attr) -> Tensor:
         m_ij = self.edge_mlp( torch.cat([x_i, x_j, edge_attr], dim=-1) )
-        coor_w = self.coors_mlp(m_ij)
-        return m_ij, coor_w
+        return m_ij
 
     def propagate(self, edge_index: Adj, size: Size = None, **kwargs):
         """The initial call to start propagating messages.
@@ -294,26 +305,38 @@ class EGNN_sparse(MessagePassing):
         coll_dict = self.__collect__(self.__user_args__,
                                      edge_index, size, kwargs)
         msg_kwargs = self.inspector.distribute('message', coll_dict)
-        m_ij, coor_wij = self.message(**msg_kwargs)
-
-        # normalize if needed
-        if self.norm_rel_coors:
-            kwargs["rel_coors"] = F.normalize(kwargs["rel_coors"], dim = -1) * self.rel_coors_scale
-
-        if self.norm_coor_weights:
-            coor_wij = coor_wij.tanh()
-
+        m_ij = self.message(**msg_kwargs)
         # aggregate them
         aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
-        m_i     = self.aggregate(m_ij, **aggr_kwargs)
-        mhat_i  = self.aggregate(coor_wij * kwargs["rel_coors"], **aggr_kwargs)
+        
+        # update coors if specified
+        if self.update_coors:
+            coor_wij = self.coors_mlp(m_ij)
 
-        # update node and coors
-        node, coors = kwargs["x"], kwargs["coors"]
-        coors_out  = coors + mhat_i
+            # normalize if needed
+            if self.norm_rel_coors:
+                kwargs["rel_coors"] = F.normalize(kwargs["rel_coors"], dim = -1) * self.rel_coors_scale
 
-        hidden_out = self.node_mlp( torch.cat([node, m_i], dim = -1) )
-        hidden_out = hidden_out + node
+            if self.norm_coor_weights:
+                coor_wij = coor_wij.tanh()
+
+            mhat_i = self.aggregate(coor_wij * kwargs["rel_coors"], **aggr_kwargs)
+            coors_out = kwargs["coors"] + mhat_i
+        else:
+            coors_out = kwargs["coors"]
+
+        # update feats if specified
+        if self.update_feats:
+            if self.norm_feats:
+                hidden_feats = self.node_norm(kwargs["x"])
+            else:
+                hidden_feats = kwargs["x"]
+
+            m_i = self.aggregate(m_ij, **aggr_kwargs)
+            hidden_out = self.node_mlp( torch.cat([hidden_feats, m_i], dim = -1) )
+            hidden_out = kwargs["x"] + hidden_out
+        else: 
+            hidden_out = kwargs["x"]
 
         # return tuple
         update_kwargs = self.inspector.distribute('update', coll_dict)
@@ -350,6 +373,7 @@ class EGNN_Sparse_Network(nn.Module):
                        fourier_features = 0,
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
+                       update_coors=True, update_feats=True, norm_feats=True,
                        norm_rel_coors=False, norm_coor_weights=False,
                        recalc=0, verbose=False):
         super().__init__()
@@ -382,6 +406,9 @@ class EGNN_Sparse_Network(nn.Module):
         self.edge_attr_dim    = edge_attr_dim
         self.m_dim            = m_dim
         self.fourier_features = fourier_features
+        self.norm_feats       = norm_feats
+        self.update_feats     = update_feats
+        self.update_coors     = update_coors
         self.norm_rel_coors   = norm_rel_coors
         self.norm_coor_weights= norm_coor_weights
         self.recalc           = recalc
@@ -394,8 +421,11 @@ class EGNN_Sparse_Network(nn.Module):
                                 edge_attr_dim = edge_attr_dim,
                                 m_dim = m_dim,
                                 fourier_features = fourier_features, 
-                                norm_rel_coors=norm_rel_coors,
-                                norm_coor_weights=norm_coor_weights)
+                                norm_feats = norm_feats,
+                                update_feats = update_feats,
+                                update_coors = update_coors,
+                                norm_rel_coors = norm_rel_coors,
+                                norm_coor_weights = norm_coor_weights)
             self.mpnn_layers.append(layer)
 
     def forward(self, x, edge_index, batch, edge_attr,
