@@ -61,9 +61,13 @@ class EGNN(nn.Module):
         norm_coor_weights = False,
         num_nearest_neighbors = 0,
         dropout = 0.0,
-        init_eps = 1e-3
+        init_eps = 1e-3,
+        update_feats = True,
+        update_coors = True
     ):
         super().__init__()
+        assert update_feats or update_coors, 'you must update either features, coordinates, or both'
+
         self.fourier_features = fourier_features
 
         edge_input_dim = (fourier_features * 2) + (dim * 2) + edge_dim + 1
@@ -82,7 +86,7 @@ class EGNN(nn.Module):
             dropout,
             SiLU(),
             nn.Linear(dim * 2, dim),
-        )
+        ) if update_feats else None
 
         self.norm_coor_weights = norm_coor_weights
         self.norm_rel_coors = norm_rel_coors
@@ -95,7 +99,7 @@ class EGNN(nn.Module):
             dropout,
             SiLU(),
             nn.Linear(m_dim * 4, 1)
-        )
+        ) if update_coors else None
 
         self.num_nearest_neighbors = num_nearest_neighbors
 
@@ -145,32 +149,38 @@ class EGNN(nn.Module):
 
         m_ij = self.edge_mlp(edge_input)
 
-        coor_weights = self.coors_mlp(m_ij)
-        coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
+        if exists(self.coors_mlp):
+            coor_weights = self.coors_mlp(m_ij)
+            coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
 
-        if self.norm_coor_weights:
-            coor_weights = coor_weights.tanh()
+            if self.norm_coor_weights:
+                coor_weights = coor_weights.tanh()
 
-        if self.norm_rel_coors:
-            rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
+            if self.norm_rel_coors:
+                rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
 
-        if exists(mask):
-            mask_i = rearrange(mask, 'b i -> b i ()')
+            if exists(mask):
+                mask_i = rearrange(mask, 'b i -> b i ()')
 
-            if use_nearest:
-                mask_j = batched_index_select(mask, nbhd_indices, dim = 1)
-            else:
-                mask_j = rearrange(mask, 'b j -> b () j')
+                if use_nearest:
+                    mask_j = batched_index_select(mask, nbhd_indices, dim = 1)
+                else:
+                    mask_j = rearrange(mask, 'b j -> b () j')
 
-            mask = mask_i * mask_j
-            coor_weights.masked_fill_(~mask, 0.)
+                mask = mask_i * mask_j
+                coor_weights.masked_fill_(~mask, 0.)
 
-        coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
+            coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
+        else:
+            coors_out = coors
 
-        m_i = m_ij.sum(dim = -2)
+        if exists(self.node_mlp):
+            m_i = m_ij.sum(dim = -2)
 
-        node_mlp_input = torch.cat((feats, m_i), dim = -1)
-        node_out = self.node_mlp(node_mlp_input) + feats
+            node_mlp_input = torch.cat((feats, m_i), dim = -1)
+            node_out = self.node_mlp(node_mlp_input) + feats
+        else:
+            node_out = feats
 
         return node_out, coors_out
 
