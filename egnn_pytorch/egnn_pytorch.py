@@ -62,6 +62,7 @@ class EGNN(nn.Module):
         num_nearest_neighbors = 0,
         dropout = 0.0,
         init_eps = 1e-3,
+        norm_feats = False,
         update_feats = True,
         update_coors = True
     ):
@@ -80,6 +81,8 @@ class EGNN(nn.Module):
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
         )
+
+        self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
@@ -177,7 +180,8 @@ class EGNN(nn.Module):
         if exists(self.node_mlp):
             m_i = m_ij.sum(dim = -2)
 
-            node_mlp_input = torch.cat((feats, m_i), dim = -1)
+            normed_feats = self.node_norm(feats)
+            node_mlp_input = torch.cat((normed_feats, m_i), dim = -1)
             node_out = self.node_mlp(node_mlp_input) + feats
         else:
             node_out = feats
