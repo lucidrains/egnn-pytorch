@@ -18,7 +18,9 @@ def exists(val):
     return val is not None
 
 def safe_div(num, den, eps = 1e-8):
-    return num.div(den + eps)
+    res = num.div(den + eps)
+    res.masked_fill_(den == 0, 0.)
+    return res
 
 def batched_index_select(values, indices, dim = 1):
     value_dims = values.shape[(dim + 1):]
@@ -229,14 +231,14 @@ class EGNN(nn.Module):
             coors_out = coors
 
         if exists(self.node_mlp):
-            m_ij = m_ij.masked_fill(~mask[..., None], 0.)
+            m_ij_mask = rearrange(mask, '... -> ... ()')
+            m_ij = m_ij.masked_fill(~m_ij_mask, 0.)
 
             if self.m_pool_method == 'mean':
                 if exists(mask):
                     # masked mean
-                    mask_sum = mask.sum(dim = -1)[..., None]
+                    mask_sum = m_ij_mask.sum(dim = -2)
                     m_i = safe_div(m_ij.sum(dim = -2), mask_sum)
-                    m_i = m_i.masked_fill(mask_sum == 0, 0.) # account for a row with no neighbors at all (just set to 0)
                 else:
                     m_i = m_ij.mean(dim = -2)
 
