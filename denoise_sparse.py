@@ -38,7 +38,7 @@ data = scn.load(
 )
 
 dl = cycle(data['train'])
-optim = Adam(net.parameters(), lr=3e-5)
+optim = Adam(net.parameters(), lr=3e-4)
 
 for _ in range(10000):
     for _ in range(GRADIENT_ACCUMULATE_EVERY):

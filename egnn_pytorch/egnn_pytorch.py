@@ -245,11 +245,7 @@ class EGNN(nn.Module):
                     m_i = m_ij.mean(dim = -2)
 
             elif self.m_pool_method == 'sum':
-                if exists(mask):
-                    num_nodes = rearrange(num_nodes, 'b -> b ()')
-                    m_i = safe_div(m_ij.sum(dim = -2), num_nodes)
-                else:
-                    m_i = m_ij.sum(dim = -2)
+                m_i = m_ij.sum(dim = -2)
 
             normed_feats = self.node_norm(feats)
             node_mlp_input = torch.cat((normed_feats, m_i), dim = -1)
