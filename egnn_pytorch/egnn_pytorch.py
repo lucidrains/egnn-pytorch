@@ -473,9 +473,8 @@ class EGNN_Sparse_Network(nn.Module):
                        fourier_features = 0,
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
-                       update_coors=True, update_feats=True, norm_feats=True,
-                       norm_rel_coors=False, norm_coor_weights=False,
-                       recalc=0 ):
+                       update_coors=True, update_feats=True, 
+                       norm_feats=True, norm_coors=False, recalc=0 ):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -521,10 +520,9 @@ class EGNN_Sparse_Network(nn.Module):
                                 m_dim = m_dim,
                                 fourier_features = fourier_features, 
                                 norm_feats = norm_feats,
+                                norm_coors = norm_coors,
                                 update_feats = update_feats,
-                                update_coors = update_coors,
-                                norm_rel_coors = norm_rel_coors,
-                                norm_coor_weights = norm_coor_weights)
+                                update_coors = update_coors)
             self.mpnn_layers.append(layer)
 
     def forward(self, x, edge_index, batch, edge_attr,
