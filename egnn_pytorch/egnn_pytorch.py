@@ -83,8 +83,10 @@ class EGNN(nn.Module):
         update_coors = True,
         only_sparse_neighbors = False,
         valid_radius = float('inf'),
+        m_pool_method = 'sum'
     ):
         super().__init__()
+        assert m_pool_method in {'sum', 'mean'}, 'pool method must be either sum or mean'
         assert update_feats or update_coors, 'you must update either features, coordinates, or both'
 
         self.fourier_features = fourier_features
@@ -101,6 +103,8 @@ class EGNN(nn.Module):
         )
 
         self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
+
+        self.m_pool_method = m_pool_method
 
         self.node_mlp = nn.Sequential(
             nn.Linear(dim + m_dim, dim * 2),
@@ -223,14 +227,19 @@ class EGNN(nn.Module):
             coors_out = coors
 
         if exists(self.node_mlp):
-            if exists(mask):
-                # masked mean
-                m_ij = m_ij.masked_fill(~mask[..., None], 0.)
-                mask_sum = mask.sum(dim = -1)[..., None]
-                m_i = safe_div(m_ij.sum(dim = -2), mask_sum)
-                m_i = m_i.masked_fill(mask_sum == 0, 0.)
-            else:
-                m_i = m_ij.mean(dim = -2)
+            m_ij = m_ij.masked_fill(~mask[..., None], 0.)
+
+            if self.m_pool_method == 'mean':
+                if exists(mask):
+                    # masked mean
+                    mask_sum = mask.sum(dim = -1)[..., None]
+                    m_i = safe_div(m_ij.sum(dim = -2), mask_sum)
+                    m_i = m_i.masked_fill(mask_sum == 0, 0.) # account for a row with no neighbors at all (just set to 0)
+                else:
+                    m_i = m_ij.mean(dim = -2)
+
+            elif self.m_pool_method == 'sum':
+                m_i = m_ij.sum(dim = -2)
 
             normed_feats = self.node_norm(feats)
             node_mlp_input = torch.cat((normed_feats, m_i), dim = -1)
