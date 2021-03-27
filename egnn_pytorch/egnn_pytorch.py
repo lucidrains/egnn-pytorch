@@ -135,6 +135,10 @@ class EGNN(nn.Module):
         if use_nearest:
             ranking = rel_dist[..., 0]
 
+            if exists(mask):
+                rank_mask = mask[:, None, :] * mask[:, None, :]
+                ranking.masked_fill_(~rank_mask, 1e5)
+
             if exists(adj_mat):
                 if len(adj_mat.shape) == 2:
                     adj_mat = repeat(adj_mat, 'i j -> b i j', b = b)

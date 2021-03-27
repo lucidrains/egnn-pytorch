@@ -13,7 +13,7 @@ torch.set_default_dtype(torch.float64)
 BATCH_SIZE = 1
 GRADIENT_ACCUMULATE_EVERY = 16
 
-def cycle(loader, len_thres = 500):
+def cycle(loader, len_thres = 1000):
     while True:
         for data in loader:
             if data.seqs.shape[1] > len_thres:
@@ -24,7 +24,8 @@ net = EGNN_Network(
     num_tokens = 21,
     depth = 5,
     dim = 8,
-    num_nearest_neighbors = 6,
+    num_nearest_neighbors = 8,
+    fourier_features = 2,
     only_sparse_neighbors = True
 ).cuda()
 
@@ -37,7 +38,7 @@ data = scn.load(
 )
 
 dl = cycle(data['train'])
-optim = Adam(net.parameters(), lr=1e-4)
+optim = Adam(net.parameters(), lr=3e-5)
 
 for _ in range(10000):
     for _ in range(GRADIENT_ACCUMULATE_EVERY):
