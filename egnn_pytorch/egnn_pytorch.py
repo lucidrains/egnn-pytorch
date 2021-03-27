@@ -18,7 +18,7 @@ def exists(val):
     return val is not None
 
 def safe_div(num, den, eps = 1e-8):
-    res = num.div(den + eps)
+    res = num.div(den.clamp(min = eps))
     res.masked_fill_(den == 0, 0.)
     return res
 
