@@ -158,7 +158,7 @@ class EGNN(nn.Module):
         if exists(mask):
             num_nodes = mask.sum(dim = -1)
 
-        use_nearest = num_nearest > 0
+        use_nearest = num_nearest > 0 or only_sparse_neighbors
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
         rel_dist = (rel_coors ** 2).sum(dim = -1, keepdim = True)
@@ -174,7 +174,7 @@ class EGNN(nn.Module):
 
             if exists(adj_mat):
                 if len(adj_mat.shape) == 2:
-                    adj_mat = repeat(adj_mat, 'i j -> b i j', b = b)
+                    adj_mat = repeat(adj_mat.clone(), 'i j -> b i j', b = b)
 
                 if only_sparse_neighbors:
                     num_nearest = int(adj_mat.float().sum(dim = -1).max().item())
@@ -182,8 +182,8 @@ class EGNN(nn.Module):
 
                 self_mask = rearrange(torch.eye(n, device = device, dtype = torch.bool), 'i j -> () i j')
 
+                adj_mat = adj_mat.masked_fill(self_mask, False)
                 ranking.masked_fill_(self_mask, -1.)
-                adj_mat.masked_fill_(self_mask, False)
                 ranking.masked_fill_(adj_mat, 0.)
 
             nbhd_ranking, nbhd_indices = ranking.topk(num_nearest, dim = -1, largest = False)
@@ -272,22 +272,53 @@ class EGNN_Network(nn.Module):
         num_tokens = None,
         num_edge_tokens = None,
         edge_dim = 0,
+        num_adj_degrees = None,
+        adj_dim = 0,
         **kwargs
     ):
         super().__init__()
+        assert not (exists(num_adj_degrees) and num_adj_degrees < 1), 'make sure adjacent degrees is greater than 1'
+
         self.token_emb = nn.Embedding(num_tokens, dim) if exists(num_tokens) else None
         self.edge_emb = nn.Embedding(num_edge_tokens, edge_dim) if exists(num_edge_tokens) else None
 
+        self.num_adj_degrees = num_adj_degrees
+        self.adj_emb = nn.Embedding(num_adj_degrees + 1, adj_dim) if exists(num_adj_degrees) and adj_dim > 0 else None
+
+        edge_dim = edge_dim if exists(num_edge_tokens) else 0
+        adj_dim = adj_dim if exists(num_adj_degrees) else 0
+
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(EGNN(dim = dim, edge_dim = edge_dim, norm_feats = True, **kwargs))
+            self.layers.append(EGNN(dim = dim, edge_dim = (edge_dim + adj_dim), norm_feats = True, **kwargs))
 
     def forward(self, feats, coors, adj_mat = None, edges = None, mask = None):
+        b = feats.shape[0]
+
         if exists(self.token_emb):
             feats = self.token_emb(feats)
 
         if exists(edges) and exists(self.edge_emb):
             edges = self.edge_emb(edges)
+
+        # create N-degrees adjacent matrix from 1st degree connections
+        if exists(self.num_adj_degrees):
+            if len(adj_mat.shape) == 2:
+                adj_mat = repeat(adj_mat.clone(), 'i j -> b i j', b = b)
+
+            adj_indices = adj_mat.clone().long()
+
+            for ind in range(self.num_adj_degrees - 1):
+                degree = ind + 2
+
+                next_degree_adj_mat = (adj_mat.float() @ adj_mat.float()) > 0
+                next_degree_mask = (next_degree_adj_mat.float() - adj_mat.float()).bool()
+                adj_indices.masked_fill_(next_degree_mask, degree)
+                adj_mat = next_degree_adj_mat.clone()
+
+            if exists(self.adj_emb):
+                adj_emb = self.adj_emb(adj_indices)
+                edges = torch.cat((edges, adj_emb), dim = -1) if exists(edges) else adj_emb
 
         for layer in self.layers:
             feats, coors = layer(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)

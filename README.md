@@ -73,7 +73,33 @@ net = EGNN_Network(
     num_tokens = 21,
     dim = 32,
     depth = 3,
-    num_nearest_neighbors = 3,
+    only_sparse_neighbors = True
+)
+
+feats = torch.randint(0, 21, (1, 1024))
+coors = torch.randn(1, 1024, 3)
+mask = torch.ones_like(feats).bool()
+
+# naive adjacency matrix
+# assuming the sequence is connected as a chain, with at most 2 neighbors - (1024, 1024)
+i = torch.arange(1024)
+adj_mat = (i[:, None] >= (i[None, :] - 1)) & (i[:, None] <= (i[None, :] + 1))
+
+feats_out, coors_out = net(feats, coors, mask = mask, adj_mat = adj_mat) # (1, 1024, 32), (1, 1024, 3)
+```
+
+You can also have the network automatically determine the Nth-order neighbors, and pass in an adjacency embedding (depending on the order) to be used as an edge, with two extra keyword arguments
+
+```python
+import torch
+from egnn_pytorch.egnn_pytorch import EGNN_Network
+
+net = EGNN_Network(
+    num_tokens = 21,
+    dim = 32,
+    depth = 3,
+    num_adj_degrees = 3,           # fetch up to 3rd degree neighbors
+    adj_dim = 8,                   # pass an adjacency degree embedding to the EGNN layer, to be used in the edge MLP
     only_sparse_neighbors = True
 )
 

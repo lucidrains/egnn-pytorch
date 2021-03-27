@@ -24,10 +24,12 @@ net = EGNN_Network(
     num_tokens = 21,
     depth = 5,
     dim = 8,
-    num_nearest_neighbors = 16,
+    num_nearest_neighbors = 0,
     fourier_features = 2,
-    only_sparse_neighbors = True,
-    norm_coors = True
+    norm_coors = True,
+    adj_dim = 8,
+    num_adj_degrees = 4,
+    only_sparse_neighbors = True
 ).cuda()
 
 data = scn.load(
@@ -63,7 +65,6 @@ for _ in range(10000):
 
         i = torch.arange(seq.shape[-1], device = seq.device)
         adj_mat = (i[:, None] >= (i[None, :] - 1)) & (i[:, None] <= (i[None, :] + 1))
-        adj_mat = (adj_mat.float() @ adj_mat.float()) > 0  # get second degree neighbors too
 
         noised_coords = coords + torch.randn_like(coords)
 
