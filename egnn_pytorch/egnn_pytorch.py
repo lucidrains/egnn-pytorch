@@ -298,6 +298,7 @@ class EGNN_sparse(MessagePassing):
     """ Different from the above since it separates the edge assignment
         from the computation (this allows for great reduction in time and 
         computations when the graph is locally or sparse connected).
+        * aggr: one of ["add", "mean", "max"]
     """
     def __init__(
         self,
@@ -306,20 +307,25 @@ class EGNN_sparse(MessagePassing):
         edge_attr_dim = 0,
         m_dim = 16,
         fourier_features = 0,
-        update_coors = True, 
-        update_feats = True,
         norm_feats = False,
-        norm_rel_coors = False,
-        norm_coor_weights = False,
+        norm_coors = False,
+        update_feats = True,
+        update_coors = True, 
         dropout = 0.,
-        init_eps = 1e-3
+        init_eps = 1e-3,
+        aggr = "add",
+        **kwargs
     ):
-        super().__init__()
+        assert aggr in {'add', 'sum', 'max', 'mean'}, 'pool method must be a valid option'
+        assert update_feats or update_coors, 'you must update either features, coordinates, or both'
+        kwargs.setdefault('aggr', aggr)
+        super(EGNN_sparse, self).__init__(**kwargs)
         # model params
         self.fourier_features = fourier_features
         self.feats_dim = feats_dim
         self.pos_dim = pos_dim
         self.norm_feats = norm_feats
+        self.norm_coors = norm_coors
         self.update_coors = update_coors
         self.update_feats = update_feats
 
@@ -337,6 +343,7 @@ class EGNN_sparse(MessagePassing):
 
         # NODES
         self.node_norm = nn.LayerNorm(feats_dim) if norm_feats else nn.Identity()
+        self.coors_norm = CoorsNorm() if norm_coors else nn.Identity()
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
@@ -346,19 +353,13 @@ class EGNN_sparse(MessagePassing):
         ) if update_feats else None
 
         # COORS
-        self.norm_coor_weights = norm_coor_weights
-        self.norm_rel_coors = norm_rel_coors
-        if norm_rel_coors:
-            self.rel_coors_scale = nn.Parameter(torch.ones(1))
-
-        last_coor_linear = nn.Linear(m_dim * 4, 1)
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
             dropout,
             SiLU(),
             nn.Linear(m_dim * 4, 1)
         ) if update_coors else None
-        # seems to be needed to keep the network from exploding to NaN with greater depths
+
         self.init_eps = init_eps
         self.apply(self.init_)
 
@@ -421,11 +422,7 @@ class EGNN_sparse(MessagePassing):
             coor_wij = self.coors_mlp(m_ij)
 
             # normalize if needed
-            if self.norm_rel_coors:
-                kwargs["rel_coors"] = F.normalize(kwargs["rel_coors"], dim = -1) * self.rel_coors_scale
-
-            if self.norm_coor_weights:
-                coor_wij = coor_wij.tanh()
+            kwargs["rel_coors"] = self.coors_norm(kwargs["rel_coors"])
 
             mhat_i = self.aggregate(coor_wij * kwargs["rel_coors"], **aggr_kwargs)
             coors_out = kwargs["coors"] + mhat_i
@@ -434,12 +431,9 @@ class EGNN_sparse(MessagePassing):
 
         # update feats if specified
         if self.update_feats:
-            if self.norm_feats:
-                hidden_feats = self.node_norm(kwargs["x"])
-            else:
-                hidden_feats = kwargs["x"]
-
             m_i = self.aggregate(m_ij, **aggr_kwargs)
+
+            hidden_feats = self.node_norm(kwargs["x"])
             hidden_out = self.node_mlp( torch.cat([hidden_feats, m_i], dim = -1) )
             hidden_out = kwargs["x"] + hidden_out
         else: 
@@ -450,7 +444,7 @@ class EGNN_sparse(MessagePassing):
 
     def __repr__(self):
         dict_print = {}
-        return "E(n)-GNN Layer for Graphs " + str(dict_print) 
+        return "E(n)-GNN Layer for Graphs " + str(self.__dict__) 
 
 
 class EGNN_Sparse_Network(nn.Module):
