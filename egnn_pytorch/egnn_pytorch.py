@@ -143,7 +143,9 @@ class EGNN(nn.Module):
     def forward(self, feats, coors, edges = None, mask = None, adj_mat = None):
         b, n, d, device, fourier_features, num_nearest, valid_radius, only_sparse_neighbors = *feats.shape, feats.device, self.fourier_features, self.num_nearest_neighbors, self.valid_radius, self.only_sparse_neighbors
 
-        num_nodes = mask.sum(dim = -1)
+        if exists(mask):
+            num_nodes = mask.sum(dim = -1)
+
         use_nearest = num_nearest > 0
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
@@ -243,8 +245,11 @@ class EGNN(nn.Module):
                     m_i = m_ij.mean(dim = -2)
 
             elif self.m_pool_method == 'sum':
-                num_nodes = rearrange(num_nodes, 'b -> b ()')
-                m_i = safe_div(m_ij.sum(dim = -2), num_nodes)
+                if exists(mask):
+                    num_nodes = rearrange(num_nodes, 'b -> b ()')
+                    m_i = safe_div(m_ij.sum(dim = -2), num_nodes)
+                else:
+                    m_i = m_ij.sum(dim = -2)
 
             normed_feats = self.node_norm(feats)
             node_mlp_input = torch.cat((normed_feats, m_i), dim = -1)
