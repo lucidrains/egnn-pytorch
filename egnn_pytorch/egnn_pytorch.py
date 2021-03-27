@@ -2,11 +2,13 @@ import torch
 from torch import nn, einsum, broadcast_tensors
 import torch.nn.functional as F
 
-from einops import rearrange
+from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
 from torch_geometric.nn import MessagePassing
+
 # types
+
 from typing import Optional, List, Union
 from torch_geometric.typing import Adj, Size, OptTensor, Tensor
 
@@ -14,6 +16,9 @@ from torch_geometric.typing import Adj, Size, OptTensor, Tensor
 
 def exists(val):
     return val is not None
+
+def safe_div(num, den, eps = 1e-8):
+    return num.div(den + eps)
 
 def batched_index_select(values, indices, dim = 1):
     value_dims = values.shape[(dim + 1):]
@@ -64,7 +69,9 @@ class EGNN(nn.Module):
         init_eps = 1e-3,
         norm_feats = False,
         update_feats = True,
-        update_coors = True
+        update_coors = True,
+        only_sparse_neighbors = False,
+        valid_radius = float('inf'),
     ):
         super().__init__()
         assert update_feats or update_coors, 'you must update either features, coordinates, or both'
@@ -105,6 +112,8 @@ class EGNN(nn.Module):
         ) if update_coors else None
 
         self.num_nearest_neighbors = num_nearest_neighbors
+        self.only_sparse_neighbors = only_sparse_neighbors
+        self.valid_radius = valid_radius
 
         self.init_eps = init_eps
         self.apply(self.init_)
@@ -114,8 +123,8 @@ class EGNN(nn.Module):
             # seems to be needed to keep the network from exploding to NaN with greater depths
             nn.init.normal_(module.weight, std = self.init_eps)
 
-    def forward(self, feats, coors, edges = None, mask = None):
-        b, n, d, fourier_features, num_nearest = *feats.shape, self.fourier_features, self.num_nearest_neighbors
+    def forward(self, feats, coors, edges = None, mask = None, adj_mat = None):
+        b, n, d, device, fourier_features, num_nearest, valid_radius, only_sparse_neighbors = *feats.shape, feats.device, self.fourier_features, self.num_nearest_neighbors, self.valid_radius, self.only_sparse_neighbors
         use_nearest = num_nearest > 0
 
         rel_coors = rearrange(coors, 'b i d -> b i () d') - rearrange(coors, 'b j d -> b () j d')
@@ -124,7 +133,26 @@ class EGNN(nn.Module):
         i = j = n
 
         if use_nearest:
-            nbhd_indices = rel_dist[..., 0].topk(num_nearest, dim = -1, largest = False).indices
+            ranking = rel_dist[..., 0]
+
+            if exists(adj_mat):
+                if len(adj_mat.shape) == 2:
+                    adj_mat = repeat(adj_mat, 'i j -> b i j', b = b)
+
+                if only_sparse_neighbors:
+                    num_nearest = int(adj_mat.float().sum(dim = -1).max().item())
+                    valid_radius = 0
+
+                self_mask = rearrange(torch.eye(n, device = device, dtype = torch.bool), 'i j -> () i j')
+
+                ranking.masked_fill_(self_mask, -1.)
+                adj_mat.masked_fill_(self_mask, False)
+                ranking.masked_fill_(adj_mat, 0.)
+
+            nbhd_ranking, nbhd_indices = ranking.topk(num_nearest, dim = -1, largest = False)
+
+            nbhd_mask = nbhd_ranking <= valid_radius
+
             rel_coors = batched_index_select(rel_coors, nbhd_indices, dim = 2)
             rel_dist = batched_index_select(rel_dist, nbhd_indices, dim = 2)
 
@@ -152,6 +180,16 @@ class EGNN(nn.Module):
 
         m_ij = self.edge_mlp(edge_input)
 
+        if exists(mask):
+            mask_i = rearrange(mask, 'b i -> b i ()')
+
+            if use_nearest:
+                mask_j = batched_index_select(mask, nbhd_indices, dim = 1)
+                mask = (mask_i * mask_j) & nbhd_mask
+            else:
+                mask_j = rearrange(mask, 'b j -> b () j')
+                mask = mask_i * mask_j
+
         if exists(self.coors_mlp):
             coor_weights = self.coors_mlp(m_ij)
             coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
@@ -163,14 +201,6 @@ class EGNN(nn.Module):
                 rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
 
             if exists(mask):
-                mask_i = rearrange(mask, 'b i -> b i ()')
-
-                if use_nearest:
-                    mask_j = batched_index_select(mask, nbhd_indices, dim = 1)
-                else:
-                    mask_j = rearrange(mask, 'b j -> b () j')
-
-                mask = mask_i * mask_j
                 coor_weights.masked_fill_(~mask, 0.)
 
             coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
@@ -178,7 +208,14 @@ class EGNN(nn.Module):
             coors_out = coors
 
         if exists(self.node_mlp):
-            m_i = m_ij.sum(dim = -2)
+            if exists(mask):
+                # masked mean
+                m_ij = m_ij.masked_fill(~mask[..., None], 0.)
+                mask_sum = mask.sum(dim = -1)[..., None]
+                m_i = safe_div(m_ij.sum(dim = -2), mask_sum)
+                m_i = m_i.masked_fill(mask_sum == 0, 0.)
+            else:
+                m_i = m_ij.mean(dim = -2)
 
             normed_feats = self.node_norm(feats)
             node_mlp_input = torch.cat((normed_feats, m_i), dim = -1)
@@ -207,7 +244,7 @@ class EGNN_Network(nn.Module):
         for _ in range(depth):
             self.layers.append(EGNN(dim = dim, edge_dim = edge_dim, norm_feats = True, **kwargs))
 
-    def forward(self, feats, coors, edges = None, mask = None):
+    def forward(self, feats, coors, adj_mat = None, edges = None, mask = None):
         if exists(self.token_emb):
             feats = self.token_emb(feats)
 
@@ -215,7 +252,7 @@ class EGNN_Network(nn.Module):
             edges = self.edge_emb(edges)
 
         for layer in self.layers:
-            feats, coors = layer(feats, coors, edges = edges, mask = mask)
+            feats, coors = layer(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)
 
         return feats, coors
 

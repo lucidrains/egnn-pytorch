@@ -63,6 +63,46 @@ mask = torch.ones_like(feats).bool()    # (1, 1024)
 feats_out, coors_out = net(feats, coors, mask = mask) # (1, 1024, 32), (1, 1024, 3)
 ```
 
+Only attend to sparse neighbors, given to the network as an adjacency matrix. `num_nearest_neighbors` will need to be set to the maximum number of neighbors to cover all the neighbors as specified in the matrix.
+
+```python
+import torch
+from egnn_pytorch.egnn_pytorch import EGNN_Network
+
+net = EGNN_Network(
+    num_tokens = 21,
+    dim = 32,
+    depth = 3,
+    num_nearest_neighbors = 3,
+    only_sparse_neighbors = True
+)
+
+feats = torch.randint(0, 21, (1, 1024))
+coors = torch.randn(1, 1024, 3)
+mask = torch.ones_like(feats).bool()
+
+# naive adjacency matrix
+# assuming the sequence is connected as a chain, with at most 2 neighbors - (1024, 1024)
+i = torch.arange(1024)
+adj_mat = (i[:, None] >= (i[None, :] - 1)) & (i[:, None] <= (i[None, :] + 1))
+
+feats_out, coors_out = net(feats, coors, mask = mask, adj_mat = adj_mat) # (1, 1024, 32), (1, 1024, 3)
+```
+
+## Examples
+
+To run the protein backbone denoising example, first install `sidechainnet`
+
+```bash
+$ pip install sidechainnet
+```
+
+Then
+
+```bash
+$ python denoise_sparse.py
+```
+
 ## Citations
 
 ```bibtex
