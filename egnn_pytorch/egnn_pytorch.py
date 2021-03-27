@@ -45,6 +45,17 @@ def fourier_encode_dist(x, num_encodings = 4, include_self = True):
     x = torch.cat((x, orig_x), dim = -1) if include_self else x
     return x
 
+def embedd_token(x, dims, layers):
+    stop_concat = -len(dims)
+    to_embedd = x[:, stop_concat:].long()
+    for i,emb_layer in enumerate(layer):
+        # the portion corresponding to `to_embedd` part gets dropped
+        x = torch.cat([ x[:, :stop_concat], 
+                        emb_layer( to_embedd[:, i] ) 
+                      ], dim=-1)
+        stop_concat = x.shape[-1]
+    return x
+
 # swish activation fallback
 
 class Swish_(nn.Module):
@@ -376,10 +387,12 @@ class EGNN_sparse(MessagePassing):
         coll_dict = self.__collect__(self.__user_args__,
                                      edge_index, size, kwargs)
         msg_kwargs = self.inspector.distribute('message', coll_dict)
-        m_ij = self.message(**msg_kwargs)
-        # aggregate them
         aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
+        update_kwargs = self.inspector.distribute('update', coll_dict)
         
+        # get messages
+        m_ij = self.message(**msg_kwargs)
+
         # update coors if specified
         if self.update_coors:
             coor_wij = self.coors_mlp(m_ij)
@@ -410,7 +423,6 @@ class EGNN_sparse(MessagePassing):
             hidden_out = kwargs["x"]
 
         # return tuple
-        update_kwargs = self.inspector.distribute('update', coll_dict)
         return self.update((hidden_out, coors_out), **update_kwargs)
 
     def __repr__(self):
@@ -446,7 +458,7 @@ class EGNN_Sparse_Network(nn.Module):
                        edge_embedding_nums=[], edge_embedding_dims=[],
                        update_coors=True, update_feats=True, norm_feats=True,
                        norm_rel_coors=False, norm_coor_weights=False,
-                       recalc=0, verbose=False):
+                       recalc=0 ):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -483,7 +495,6 @@ class EGNN_Sparse_Network(nn.Module):
         self.norm_rel_coors   = norm_rel_coors
         self.norm_coor_weights= norm_coor_weights
         self.recalc           = recalc
-        self.verbose          = verbose
         
         # instantiate layers
         for i in range(n_layers):
@@ -501,49 +512,30 @@ class EGNN_Sparse_Network(nn.Module):
 
     def forward(self, x, edge_index, batch, edge_attr,
                 bsize=None, recalc_edge=None, verbose=0):
-        """ Embedding of inputs when necessary, then pass layers.
-            Recalculate edge features every time with the
+        """ Recalculate edge features every `self.recalc_edge` with the
             `recalc_edge` function if self.recalc_edge is set.
+
+            * x: (N, pos_dim+feats_dim) will be unpacked into coors, feats.
         """
-        original_x = x.clone()
-        original_edge_index = edge_index.clone()
-        original_edge_attr = edge_attr.clone()
-        # pick to embedd. embedd sequentially and add to input - points:
-        stop_concat = -len(self.embedding_dims)
-        to_embedd = x[:, stop_concat:].long()
-        for i,emb_layer in enumerate(self.emb_layers):
-            # the portion corresponding to `to_embedd` part gets dropped
-            # at first iter
-            x = torch.cat([ x[:, :stop_concat], 
-                            emb_layer( to_embedd[:, i] ) 
-                          ], dim=-1)
-            stop_concat = x.shape[-1]
-        # pass layers
+        # NODES - Embedd each dim to its target dimensions:
+        x = embedd_token(x, self.embedding_dims, self.emb_layers)
+
+        # regulates wether to embedd edges each layer
+        edges_need_embedding = True  
         for i,layer in enumerate(self.mpnn_layers):
-            # embedd edge items (needed everytime since edge_attr and idxs
-            # are recalculated every pass)
-            stop_concat = -len(self.edge_embedding_dims)
-            to_embedd = edge_attr[:, stop_concat:].long()
-            for j,edge_emb_layer in enumerate(self.edge_emb_layers):
-                # the portion corresponding to `to_embedd` part gets dropped
-                # at first iter
-                edge_attr = torch.cat([ edge_attr[:, :-len(self.edge_embedding_dims) + j], 
-                                        edge_emb_layer( to_embedd[:, j] ) 
-                              ], dim=-1)
-                stop_concat = x.shape[-1]
+            
+            # EDGES - Embedd each dim to its target dimensions:
+            if edges_need_embedding:
+                edge_attr = embedd_token(x, self.edge_embedding_dims, self.edge_emb_layers)
+                edges_need_embedding = False
+
             # pass layers
             x = layer(x, edge_index, edge_attr, size=bsize)
 
             # recalculate edge info - not needed if last layer
             if self.recalc and ((i%self.recalc == 0) and not (i == len(self.mpnn_layers)-1)) :
                 edge_index, edge_attr, _ = recalc_edge(x) # returns attr, idx, any_other_info
-            else: 
-                edge_attr = original_edge_attr.clone()
-                edge_index = original_edge_index.clone()
-            
-            if verbose:
-                print("========")
-                print(i, "layer, nlinks:", edge_attr.shape)
+                edges_need_embedding = True
             
         return x
 
