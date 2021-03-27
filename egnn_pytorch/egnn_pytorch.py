@@ -308,6 +308,7 @@ class EGNN_sparse(MessagePassing):
     """ Different from the above since it separates the edge assignment
         from the computation (this allows for great reduction in time and 
         computations when the graph is locally or sparse connected).
+        * aggr: one of ["add", "mean", "max"]
     """
     def __init__(
         self,
@@ -322,9 +323,12 @@ class EGNN_sparse(MessagePassing):
         norm_rel_coors = False,
         norm_coor_weights = False,
         dropout = 0.,
-        init_eps = 1e-3
+        init_eps = 1e-3,
+        aggr = "add"
+        **kwargs
     ):
-        super().__init__()
+        kwargs.setdefault('aggr', aggr)
+        super(EGNN_sparse, self).__init__(**kwargs)
         # model params
         self.fourier_features = fourier_features
         self.feats_dim = feats_dim
@@ -347,6 +351,7 @@ class EGNN_sparse(MessagePassing):
 
         # NODES
         self.node_norm = nn.LayerNorm(feats_dim) if norm_feats else nn.Identity()
+        self.coors_norm = CoorsNorm() if norm_coors else nn.Identity()
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
@@ -431,8 +436,7 @@ class EGNN_sparse(MessagePassing):
             coor_wij = self.coors_mlp(m_ij)
 
             # normalize if needed
-            if self.norm_rel_coors:
-                kwargs["rel_coors"] = F.normalize(kwargs["rel_coors"], dim = -1) * self.rel_coors_scale
+            rel_coors = self.coors_norm(rel_coors)
 
             if self.norm_coor_weights:
                 coor_wij = coor_wij.tanh()
@@ -460,7 +464,7 @@ class EGNN_sparse(MessagePassing):
 
     def __repr__(self):
         dict_print = {}
-        return "E(n)-GNN Layer for Graphs " + str(dict_print) 
+        return "E(n)-GNN Layer for Graphs " + str(self.__dict__) 
 
 
 class EGNN_Sparse_Network(nn.Module):
