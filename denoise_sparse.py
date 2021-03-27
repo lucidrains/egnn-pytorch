@@ -24,9 +24,10 @@ net = EGNN_Network(
     num_tokens = 21,
     depth = 5,
     dim = 8,
-    num_nearest_neighbors = 8,
+    num_nearest_neighbors = 16,
     fourier_features = 2,
-    only_sparse_neighbors = True
+    only_sparse_neighbors = True,
+    norm_coors = True
 ).cuda()
 
 data = scn.load(
@@ -38,7 +39,7 @@ data = scn.load(
 )
 
 dl = cycle(data['train'])
-optim = Adam(net.parameters(), lr=3e-4)
+optim = Adam(net.parameters(), lr=1e-3)
 
 for _ in range(10000):
     for _ in range(GRADIENT_ACCUMULATE_EVERY):

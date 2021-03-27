@@ -66,6 +66,23 @@ class Swish_(nn.Module):
 
 SiLU = nn.SiLU if hasattr(nn, 'SiLU') else Swish_
 
+# helper classes
+
+# this follows the same strategy for normalization as done in SE3 Transformers
+# https://github.com/lucidrains/se3-transformer-pytorch/blob/main/se3_transformer_pytorch/se3_transformer_pytorch.py#L95
+
+class CoorsNorm(nn.Module):
+    def __init__(self, eps = 1e-8):
+        super().__init__()
+        self.eps = eps
+        self.fn = nn.Sequential(nn.LayerNorm(1), nn.GELU())
+
+    def forward(self, coors):
+        norm = coors.norm(dim = -1, keepdim = True)
+        normed_coors = coors / norm.clamp(min = self.eps)
+        phase = self.fn(norm)
+        return (phase * normed_coors)
+
 # classes
 
 class EGNN(nn.Module):
@@ -81,6 +98,7 @@ class EGNN(nn.Module):
         dropout = 0.0,
         init_eps = 1e-3,
         norm_feats = False,
+        norm_coors = False,
         update_feats = True,
         update_coors = True,
         only_sparse_neighbors = False,
@@ -105,6 +123,7 @@ class EGNN(nn.Module):
         )
 
         self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
+        self.coors_norm = CoorsNorm() if norm_coors else nn.Identity()
 
         self.m_pool_method = m_pool_method
 
@@ -222,8 +241,7 @@ class EGNN(nn.Module):
             if self.norm_coor_weights:
                 coor_weights = coor_weights.tanh()
 
-            if self.norm_rel_coors:
-                rel_coors = F.normalize(rel_coors, dim = -1) * self.rel_coors_scale
+            rel_coors = self.coors_norm(rel_coors)
 
             if exists(mask):
                 coor_weights.masked_fill_(~mask, 0.)
