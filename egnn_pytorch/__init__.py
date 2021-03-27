@@ -1,1 +1,1 @@
-from egnn_pytorch.egnn_pytorch import EGNN, EGNN_sparse
+from egnn_pytorch.egnn_pytorch import EGNN, EGNN_sparse, EGNN_Network

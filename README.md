@@ -43,6 +43,26 @@ feats, coors = layer1(feats, coors, edges)
 feats, coors = layer2(feats, coors, edges) # (1, 16, 512), (1, 16, 3)
 ```
 
+A full EGNN network
+
+```python
+import torch
+from egnn_pytorch.egnn_pytorch import EGNN_Network
+
+net = EGNN_Network(
+    num_tokens = 21,
+    dim = 32,
+    depth = 3,
+    num_nearest_neighbors = 8
+)
+
+feats = torch.randint(0, 21, (1, 1024)) # (1, 1024)
+coors = torch.randn(1, 1024, 3)         # (1, 1024, 3)
+mask = torch.ones_like(feats).bool()    # (1, 1024)
+
+feats_out, coors_out = net(feats, coors, mask = mask) # (1, 1024, 32), (1, 1024, 3)
+```
+
 ## Citations
 
 ```bibtex

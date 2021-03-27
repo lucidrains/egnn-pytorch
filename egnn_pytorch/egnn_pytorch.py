@@ -188,6 +188,36 @@ class EGNN(nn.Module):
 
         return node_out, coors_out
 
+class EGNN_Network(nn.Module):
+    def __init__(
+        self,
+        *,
+        depth,
+        dim,
+        num_tokens = None,
+        num_edge_tokens = None,
+        edge_dim = 0,
+        **kwargs
+    ):
+        super().__init__()
+        self.token_emb = nn.Embedding(num_tokens, dim) if exists(num_tokens) else None
+        self.edge_emb = nn.Embedding(num_edge_tokens, edge_dim) if exists(num_edge_tokens) else None
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(EGNN(dim = dim, edge_dim = edge_dim, norm_feats = True, **kwargs))
+
+    def forward(self, feats, coors, edges = None, mask = None):
+        if exists(self.token_emb):
+            feats = self.token_emb(feats)
+
+        if exists(edges) and exists(self.edge_emb):
+            edges = self.edge_emb(edges)
+
+        for layer in self.layers:
+            feats, coors = layer(feats, coors, edges = edges, mask = mask)
+
+        return feats, coors
 
 class EGNN_sparse(MessagePassing):
     """ Different from the above since it separates the edge assignment
