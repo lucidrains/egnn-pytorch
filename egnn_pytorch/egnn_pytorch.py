@@ -303,6 +303,8 @@ class EGNN_Network(nn.Module):
 
         # create N-degrees adjacent matrix from 1st degree connections
         if exists(self.num_adj_degrees):
+            assert exists(adj_mat), 'adjacency matrix must be passed in (keyword argument adj_mat)'
+
             if len(adj_mat.shape) == 2:
                 adj_mat = repeat(adj_mat.clone(), 'i j -> b i j', b = b)
 
