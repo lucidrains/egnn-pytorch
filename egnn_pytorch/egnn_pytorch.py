@@ -310,8 +310,7 @@ class EGNN_Network(nn.Module):
             for ind in range(self.num_adj_degrees - 1):
                 degree = ind + 2
 
-                adj_mat = adj_mat.float()
-                n_adj_mat = (adj_mat @ adj_mat) > 0
+                next_degree_adj_mat = (adj_mat.float() @ adj_mat.float()) > 0
                 next_degree_mask = (next_degree_adj_mat.float() - adj_mat.float()).bool()
                 adj_indices.masked_fill_(next_degree_mask, degree)
                 adj_mat = next_degree_adj_mat.clone()
