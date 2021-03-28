@@ -63,7 +63,7 @@ mask = torch.ones_like(feats).bool()    # (1, 1024)
 feats_out, coors_out = net(feats, coors, mask = mask) # (1, 1024, 32), (1, 1024, 3)
 ```
 
-Only attend to sparse neighbors, given to the network as an adjacency matrix. `num_nearest_neighbors` will need to be set to the maximum number of neighbors to cover all the neighbors as specified in the matrix.
+Only attend to sparse neighbors, given to the network as an adjacency matrix.
 
 ```python
 import torch
