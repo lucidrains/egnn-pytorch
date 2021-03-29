@@ -50,7 +50,7 @@ def fourier_encode_dist(x, num_encodings = 4, include_self = True):
 def embedd_token(x, dims, layers):
     stop_concat = -len(dims)
     to_embedd = x[:, stop_concat:].long()
-    for i,emb_layer in enumerate(layer):
+    for i,emb_layer in enumerate(layers):
         # the portion corresponding to `to_embedd` part gets dropped
         x = torch.cat([ x[:, :stop_concat], 
                         emb_layer( to_embedd[:, i] ) 
@@ -92,7 +92,6 @@ class EGNN(nn.Module):
         edge_dim = 0,
         m_dim = 16,
         fourier_features = 0,
-        norm_rel_coors = False,
         num_nearest_neighbors = 0,
         dropout = 0.0,
         init_eps = 1e-3,
@@ -541,8 +540,6 @@ class EGNN_Sparse_Network(nn.Module):
         self.norm_feats       = norm_feats
         self.update_feats     = update_feats
         self.update_coors     = update_coors
-        self.norm_rel_coors   = norm_rel_coors
-        self.norm_coor_weights= norm_coor_weights
         self.recalc           = recalc
         
         # instantiate layers
@@ -574,7 +571,7 @@ class EGNN_Sparse_Network(nn.Module):
             
             # EDGES - Embedd each dim to its target dimensions:
             if edges_need_embedding:
-                edge_attr = embedd_token(x, self.edge_embedding_dims, self.edge_emb_layers)
+                edge_attr = embedd_token(edge_attr, self.edge_embedding_dims, self.edge_emb_layers)
                 edges_need_embedding = False
 
             # pass layers
