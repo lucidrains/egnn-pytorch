@@ -240,8 +240,9 @@ class EGNN(nn.Module):
             coors_out = coors
 
         if exists(self.node_mlp):
-            m_ij_mask = rearrange(mask, '... -> ... ()')
-            m_ij = m_ij.masked_fill(~m_ij_mask, 0.)
+            if exists(mask):
+                m_ij_mask = rearrange(mask, '... -> ... ()')
+                m_ij = m_ij.masked_fill(~m_ij_mask, 0.)
 
             if self.m_pool_method == 'mean':
                 if exists(mask):
