@@ -281,11 +281,12 @@ class EGNN_Network(nn.Module):
 
         self.token_emb = nn.Embedding(num_tokens, dim) if exists(num_tokens) else None
         self.edge_emb = nn.Embedding(num_edge_tokens, edge_dim) if exists(num_edge_tokens) else None
+        self.has_edges = edge_dim > 0
 
         self.num_adj_degrees = num_adj_degrees
         self.adj_emb = nn.Embedding(num_adj_degrees + 1, adj_dim) if exists(num_adj_degrees) and adj_dim > 0 else None
 
-        edge_dim = edge_dim if exists(num_edge_tokens) else 0
+        edge_dim = edge_dim if self.has_edges else 0
         adj_dim = adj_dim if exists(num_adj_degrees) else 0
 
         self.layers = nn.ModuleList([])

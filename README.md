@@ -115,6 +115,36 @@ adj_mat = (i[:, None] >= (i[None, :] - 1)) & (i[:, None] <= (i[None, :] + 1))
 feats_out, coors_out = net(feats, coors, mask = mask, adj_mat = adj_mat) # (1, 1024, 32), (1, 1024, 3)
 ```
 
+## Edges
+
+If you need to pass in continuous edges
+
+```python
+import torch
+from egnn_pytorch.egnn_pytorch import EGNN_Network
+
+net = EGNN_Network(
+    num_tokens = 21,
+    dim = 32,
+    depth = 3,
+    edge_dim = 4,
+    num_nearest_neighbors = 3
+)
+
+feats = torch.randint(0, 21, (1, 1024))
+coors = torch.randn(1, 1024, 3)
+mask = torch.ones_like(feats).bool()
+
+continuous_edges = torch.randn(1, 1024, 1024, 4)
+
+# naive adjacency matrix
+# assuming the sequence is connected as a chain, with at most 2 neighbors - (1024, 1024)
+i = torch.arange(1024)
+adj_mat = (i[:, None] >= (i[None, :] - 1)) & (i[:, None] <= (i[None, :] + 1))
+
+feats_out, coors_out = net(feats, coors, edges = continuous_edges, mask = mask, adj_mat = adj_mat) # (1, 1024, 32), (1, 1024, 3)
+```
+
 ## Examples
 
 To run the protein backbone denoising example, first install `sidechainnet`
