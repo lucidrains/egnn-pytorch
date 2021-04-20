@@ -5,12 +5,19 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from torch_geometric.nn import MessagePassing
-
 # types
 
 from typing import Optional, List, Union
-from torch_geometric.typing import Adj, Size, OptTensor, Tensor
+
+# pytorch geometric
+
+try:
+    from torch_geometric.nn import MessagePassing
+    from torch_geometric.typing import Adj, Size, OptTensor, Tensor
+    PYG_AVAILABLE = True
+except:
+    MessagePassing = object
+    PYG_AVAILABLE = False
 
 # helper functions
 
@@ -350,6 +357,7 @@ class EGNN_sparse(MessagePassing):
         aggr = "add",
         **kwargs
     ):
+        assert PYG_AVAILABLE, 'pytorch geometric must be available to use EGNN_sparse - please install following the instructions here https://github.com/rusty1s/pytorch_geometric'
         assert aggr in {'add', 'sum', 'max', 'mean'}, 'pool method must be a valid option'
         assert update_feats or update_coors, 'you must update either features, coordinates, or both'
         kwargs.setdefault('aggr', aggr)
