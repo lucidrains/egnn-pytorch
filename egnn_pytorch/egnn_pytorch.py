@@ -18,6 +18,12 @@ try:
 except:
     MessagePassing = object
     PYG_AVAILABLE = False
+    
+    # to stop throwing errors from type suggestions
+    Adj = object
+    Size = object
+    OptTensor = object
+    Tensor = object
 
 # helper functions
 
