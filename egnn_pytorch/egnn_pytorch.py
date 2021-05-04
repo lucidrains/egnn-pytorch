@@ -16,7 +16,7 @@ try:
     from torch_geometric.typing import Adj, Size, OptTensor, Tensor
     PYG_AVAILABLE = True
 except:
-    MessagePassing = object
+    Tensor = OptTensor = Adj = MessagePassing = Size = object
     PYG_AVAILABLE = False
     
     # to stop throwing errors from type suggestions
@@ -114,7 +114,8 @@ class EGNN(nn.Module):
         update_coors = True,
         only_sparse_neighbors = False,
         valid_radius = float('inf'),
-        m_pool_method = 'sum'
+        m_pool_method = 'sum',
+        soft_edges = False
     ):
         super().__init__()
         assert m_pool_method in {'sum', 'mean'}, 'pool method must be either sum or mean'
@@ -132,6 +133,11 @@ class EGNN(nn.Module):
             nn.Linear(edge_input_dim * 2, m_dim),
             SiLU()
         )
+
+        self.edge_gate = nn.Sequential(
+            nn.Linear(m_dim, 1),
+            nn.Sigmoid()
+        ) if soft_edges else None
 
         self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
         self.coors_norm = CoorsNorm() if norm_coors else nn.Identity()
@@ -228,6 +234,9 @@ class EGNN(nn.Module):
             edge_input = torch.cat((edge_input, edges), dim = -1)
 
         m_ij = self.edge_mlp(edge_input)
+
+        if exists(self.edge_gate):
+            m_ij = m_ij * self.edge_gate(m_ij)
 
         if exists(mask):
             mask_i = rearrange(mask, 'b i -> b i ()')
