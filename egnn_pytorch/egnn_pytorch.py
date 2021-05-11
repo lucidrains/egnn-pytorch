@@ -88,7 +88,7 @@ class CoorsNorm(nn.Module):
     def __init__(self, eps = 1e-8):
         super().__init__()
         self.eps = eps
-        self.fn = nn.Sequential(nn.LayerNorm(1), nn.GELU())
+        self.fn = nn.LayerNorm(1)
 
     def forward(self, coors):
         norm = coors.norm(dim = -1, keepdim = True)
