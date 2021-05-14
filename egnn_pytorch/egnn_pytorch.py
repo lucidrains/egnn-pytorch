@@ -184,7 +184,7 @@ class EGNN(nn.Module):
         i = j = n
 
         if use_nearest:
-            ranking = rel_dist[..., 0]
+            ranking = rel_dist[..., 0].clone()
 
             if exists(mask):
                 rank_mask = mask[:, None, :] * mask[:, None, :]
