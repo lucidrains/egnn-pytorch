@@ -51,6 +51,7 @@ from egnn_pytorch.egnn_pytorch import EGNN_Network
 
 net = EGNN_Network(
     num_tokens = 21,
+    num_positions = 1024,           # unless what you are passing in is an unordered set, set this to the maximum sequence length
     dim = 32,
     depth = 3,
     num_nearest_neighbors = 8,

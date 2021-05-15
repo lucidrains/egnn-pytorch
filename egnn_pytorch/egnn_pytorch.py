@@ -300,6 +300,7 @@ class EGNN_Network(nn.Module):
         dim,
         num_tokens = None,
         num_edge_tokens = None,
+        num_positions = None,
         edge_dim = 0,
         num_adj_degrees = None,
         adj_dim = 0,
@@ -307,8 +308,10 @@ class EGNN_Network(nn.Module):
     ):
         super().__init__()
         assert not (exists(num_adj_degrees) and num_adj_degrees < 1), 'make sure adjacent degrees is greater than 1'
+        self.num_positions = num_positions
 
         self.token_emb = nn.Embedding(num_tokens, dim) if exists(num_tokens) else None
+        self.pos_emb = nn.Embedding(num_positions, dim) if exists(num_positions) else None
         self.edge_emb = nn.Embedding(num_edge_tokens, edge_dim) if exists(num_edge_tokens) else None
         self.has_edges = edge_dim > 0
 
@@ -323,10 +326,16 @@ class EGNN_Network(nn.Module):
             self.layers.append(EGNN(dim = dim, edge_dim = (edge_dim + adj_dim), norm_feats = True, **kwargs))
 
     def forward(self, feats, coors, adj_mat = None, edges = None, mask = None):
-        b = feats.shape[0]
+        b, device = feats.shape[0], feats.device
 
         if exists(self.token_emb):
             feats = self.token_emb(feats)
+
+        if exists(self.pos_emb):
+            n = feats.shape[1]
+            assert n <= self.num_positions, f'given sequence length {n} must be less than the number of positions {self.num_positions} set at init'
+            pos_emb = self.pos_emb(torch.arange(n, device = device))
+            feats += rearrange(pos_emb, 'n d -> () n d')
 
         if exists(edges) and exists(self.edge_emb):
             edges = self.edge_emb(edges)
