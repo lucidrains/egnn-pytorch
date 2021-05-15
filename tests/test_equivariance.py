@@ -3,6 +3,7 @@ import torch
 from egnn_pytorch import EGNN, EGNN_sparse
 from egnn_pytorch.utils import rot
 
+torch.set_default_dtype(torch.float64)
 
 def test_egnn_equivariance():
     layer = EGNN(dim=512, edge_dim=4)
