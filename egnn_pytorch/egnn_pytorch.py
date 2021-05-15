@@ -115,7 +115,8 @@ class EGNN(nn.Module):
         only_sparse_neighbors = False,
         valid_radius = float('inf'),
         m_pool_method = 'sum',
-        soft_edges = False
+        soft_edges = False,
+        coor_weights_clamp_value = None
     ):
         super().__init__()
         assert m_pool_method in {'sum', 'mean'}, 'pool method must be either sum or mean'
@@ -161,6 +162,8 @@ class EGNN(nn.Module):
         self.num_nearest_neighbors = num_nearest_neighbors
         self.only_sparse_neighbors = only_sparse_neighbors
         self.valid_radius = valid_radius
+
+        self.coor_weights_clamp_value = coor_weights_clamp_value
 
         self.init_eps = init_eps
         self.apply(self.init_)
@@ -256,6 +259,10 @@ class EGNN(nn.Module):
 
             if exists(mask):
                 coor_weights.masked_fill_(~mask, 0.)
+
+            if exists(self.coor_weights_clamp_value):
+                clamp_value = self.coor_weights_clamp_value
+                coor_weights.clamp_(min = -clamp_value, max = clamp_value)
 
             coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
         else:

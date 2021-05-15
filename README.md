@@ -53,7 +53,8 @@ net = EGNN_Network(
     num_tokens = 21,
     dim = 32,
     depth = 3,
-    num_nearest_neighbors = 8
+    num_nearest_neighbors = 8,
+    coor_weights_clamp_value = 2.   # absolute clampd value for the coordinate weights, needed if you increase the num neareest neighbors
 )
 
 feats = torch.randint(0, 21, (1, 1024)) # (1, 1024)
