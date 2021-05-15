@@ -13,7 +13,7 @@ torch.set_default_dtype(torch.float64)
 BATCH_SIZE = 1
 GRADIENT_ACCUMULATE_EVERY = 16
 
-def cycle(loader, len_thres = 1000):
+def cycle(loader, len_thres = 200):
     while True:
         for data in loader:
             if data.seqs.shape[1] > len_thres:
@@ -22,14 +22,13 @@ def cycle(loader, len_thres = 1000):
 
 net = EGNN_Network(
     num_tokens = 21,
+    num_positions = 200 * 3,   # maximum number of positions - absolute positional embedding since there is inherent order in the sequence
     depth = 5,
     dim = 8,
-    num_nearest_neighbors = 0,
+    num_nearest_neighbors = 16,
     fourier_features = 2,
     norm_coors = True,
-    adj_dim = 8,
-    num_adj_degrees = 4,
-    only_sparse_neighbors = True
+    coor_weights_clamp_value = 2.
 ).cuda()
 
 data = scn.load(
