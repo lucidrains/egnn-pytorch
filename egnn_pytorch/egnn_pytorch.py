@@ -379,16 +379,16 @@ class EGNN_sparse(MessagePassing):
         edge_attr_dim = 0,
         m_dim = 16,
         fourier_features = 0,
+        soft_edge = 0,
         norm_feats = False,
         norm_coors = False,
         update_feats = True,
         update_coors = True, 
         dropout = 0.,
-        init_eps = 1e-3,
+        coor_weights_clamp_value = None, 
         aggr = "add",
         **kwargs
     ):
-        assert PYG_AVAILABLE, 'pytorch geometric must be available to use EGNN_sparse - please install following the instructions here https://github.com/rusty1s/pytorch_geometric'
         assert aggr in {'add', 'sum', 'max', 'mean'}, 'pool method must be a valid option'
         assert update_feats or update_coors, 'you must update either features, coordinates, or both'
         kwargs.setdefault('aggr', aggr)
@@ -397,22 +397,29 @@ class EGNN_sparse(MessagePassing):
         self.fourier_features = fourier_features
         self.feats_dim = feats_dim
         self.pos_dim = pos_dim
+        self.m_dim = m_dim
+        self.soft_edge = soft_edge
         self.norm_feats = norm_feats
         self.norm_coors = norm_coors
         self.update_coors = update_coors
         self.update_feats = update_feats
+        self.coor_weights_clamp_value = None
 
-        edge_input_dim = (fourier_features * 2) + (feats_dim * 2) + edge_attr_dim + 1
-        dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.edge_input_dim = (fourier_features * 2) + edge_attr_dim + 1 + (feats_dim * 2)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
         # EDGES
         self.edge_mlp = nn.Sequential(
-            nn.Linear(edge_input_dim, edge_input_dim * 2),
-            dropout,
+            nn.Linear(self.edge_input_dim, self.edge_input_dim * 2),
+            self.dropout,
             SiLU(),
-            nn.Linear(edge_input_dim * 2, m_dim),
+            nn.Linear(self.edge_input_dim * 2, m_dim),
             SiLU()
         )
+
+        self.edge_weight = nn.Sequential(nn.Linear(m_dim, 1), 
+                                         nn.Sigmoid()
+        ) if soft_edge else None
 
         # NODES
         self.node_norm = nn.LayerNorm(feats_dim) if norm_feats else nn.Identity()
@@ -420,7 +427,7 @@ class EGNN_sparse(MessagePassing):
 
         self.node_mlp = nn.Sequential(
             nn.Linear(feats_dim + m_dim, feats_dim * 2),
-            dropout,
+            self.dropout,
             SiLU(),
             nn.Linear(feats_dim * 2, feats_dim),
         ) if update_feats else None
@@ -428,24 +435,29 @@ class EGNN_sparse(MessagePassing):
         # COORS
         self.coors_mlp = nn.Sequential(
             nn.Linear(m_dim, m_dim * 4),
-            dropout,
+            self.dropout,
             SiLU(),
-            nn.Linear(m_dim * 4, 1)
+            nn.Linear(self.m_dim * 4, 1)
         ) if update_coors else None
 
-        self.init_eps = init_eps
         self.apply(self.init_)
 
     def init_(self, module):
         if type(module) in {nn.Linear}:
             # seems to be needed to keep the network from exploding to NaN with greater depths
-            nn.init.normal_(module.weight, std = self.init_eps)
+            nn.init.xavier_normal_(module.weight)
+            nn.init.zeros_(module.bias)
 
     def forward(self, x: Tensor, edge_index: Adj,
-                edge_attr: OptTensor = None, size: Size = None) -> Tensor:
+                edge_attr: OptTensor = None, batch: Adj = None, 
+                angle_data: List = None,  size: Size = None) -> Tensor:
         """ Inputs: 
             * x: (n_points, d) where d is pos_dims + feat_dims
+            * edge_index: (n_edges, 2)
             * edge_attr: tensor (n_edges, n_feats) excluding basic distance feats.
+            * batch: (n_points,) long tensor. specifies xloud belonging for each point
+            * angle_data: list of tensors (levels, n_edges_i, n_length_path) long tensor.
+            * size: None
         """
         coors, feats = x[:, :self.pos_dim], x[:, self.pos_dim:]
         
@@ -493,6 +505,10 @@ class EGNN_sparse(MessagePassing):
         # update coors if specified
         if self.update_coors:
             coor_wij = self.coors_mlp(m_ij)
+            # clamp if arg is set
+            if self.coor_weights_clamp_value:
+                coor_weights_clamp_value = self.coor_weights_clamp_value
+                coor_weights.clamp_(min = -clamp_value, max = clamp_value)
 
             # normalize if needed
             kwargs["rel_coors"] = self.coors_norm(kwargs["rel_coors"])
@@ -504,6 +520,9 @@ class EGNN_sparse(MessagePassing):
 
         # update feats if specified
         if self.update_feats:
+            # weight the edges if arg is passed
+            if self.soft_edge:
+                m_ij = m_ij * self.edge_weight(m_ij)
             m_i = self.aggregate(m_ij, **aggr_kwargs)
 
             hidden_feats = self.node_norm(kwargs["x"])
@@ -540,6 +559,8 @@ class EGNN_Sparse_Network(nn.Module):
                                the resulting embedding. 1 entry per embedding needed. 
         * recalc: int. Recalculate edge feats every `recalc` MPNN layers. 0 for no recalc
         * verbose: bool. verbosity level.
+        -----
+        Diff with normal layer: one has to do preprocessing before (radius, global token, ...)
     """
     def __init__(self, n_layers, feats_dim, pos_dim = 3,
                        edge_attr_dim = 0, m_dim = 16,
@@ -547,7 +568,8 @@ class EGNN_Sparse_Network(nn.Module):
                        embedding_nums=[], embedding_dims=[],
                        edge_embedding_nums=[], edge_embedding_dims=[],
                        update_coors=True, update_feats=True, 
-                       norm_feats=True, norm_coors=False, recalc=0 ):
+                       norm_feats=True, norm_coors=False, 
+                       coor_weights_clamp_value, recalc=0 ):
         super().__init__()
 
         self.n_layers         = n_layers 
@@ -581,6 +603,7 @@ class EGNN_Sparse_Network(nn.Module):
         self.norm_feats       = norm_feats
         self.update_feats     = update_feats
         self.update_coors     = update_coors
+        self.coor_weights_clamp_value = coor_weights_clamp_value
         self.recalc           = recalc
         
         # instantiate layers
@@ -593,7 +616,8 @@ class EGNN_Sparse_Network(nn.Module):
                                 norm_feats = norm_feats,
                                 norm_coors = norm_coors,
                                 update_feats = update_feats,
-                                update_coors = update_coors)
+                                update_coors = update_coors, 
+                                coor_weights_clamp_value = coor_weights_clamp_value)
             self.mpnn_layers.append(layer)
 
     def forward(self, x, edge_index, batch, edge_attr,
@@ -616,7 +640,7 @@ class EGNN_Sparse_Network(nn.Module):
                 edges_need_embedding = False
 
             # pass layers
-            x = layer(x, edge_index, edge_attr, size=bsize)
+            x = layer(x, edge_index, edge_attr, batch=batch, size=bsize)
 
             # recalculate edge info - not needed if last layer
             if self.recalc and ((i%self.recalc == 0) and not (i == len(self.mpnn_layers)-1)) :
