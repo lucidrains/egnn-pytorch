@@ -569,7 +569,7 @@ class EGNN_Sparse_Network(nn.Module):
                        edge_embedding_nums=[], edge_embedding_dims=[],
                        update_coors=True, update_feats=True, 
                        norm_feats=True, norm_coors=False, 
-                       coor_weights_clamp_value, recalc=0 ):
+                       coor_weights_clamp_value=None, recalc=0 ):
         super().__init__()
 
         self.n_layers         = n_layers 
