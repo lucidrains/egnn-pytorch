@@ -33,6 +33,16 @@ def test_egnn_equivariance():
     assert torch.allclose(coors1, (coors2 @ R + T), atol=1e-6), 'type 1 features are equivariant'
     assert not torch.allclose(feats1, feats3, atol=1e-6), 'layer must be equivariant to permutations of node order'
 
+def test_higher_dimension():
+    layer = EGNN(dim=512, edge_dim=4)
+
+    feats = torch.randn(1, 16, 512)
+    coors = torch.randn(1, 16, 5)
+    edges = torch.randn(1, 16, 16, 4)
+    mask = torch.ones(1, 16).bool()
+
+    feats, coors = layer(feats, coors, edges, mask = mask)
+    assert True
 
 def test_egnn_equivariance_with_nearest_neighbors():
     layer = EGNN(dim=512, edge_dim=1, num_nearest_neighbors=8)

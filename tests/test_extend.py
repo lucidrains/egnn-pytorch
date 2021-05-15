@@ -5,7 +5,8 @@ sys.path.append("../egnn_pytorch")
 import torch
 
 from egnn_pytorch.utils import rot
-from egnn_pytorch import EGNN, EGNN_sparse, get_sparse_adj_paths, SE3GNN_sparse
+from egnn_pytorch import EGNN, EGNN_sparse
+from egnn_pytorch.se3gnn import get_sparse_adj_paths, SE3GNN_sparse
 
 
 def test_geom_angles():
