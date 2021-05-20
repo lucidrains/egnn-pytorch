@@ -190,7 +190,7 @@ class EGNN(nn.Module):
             ranking = rel_dist[..., 0].clone()
 
             if exists(mask):
-                rank_mask = mask[:, None, :] * mask[:, None, :]
+                rank_mask = mask[:, :, None] * mask[:, None, :]
                 ranking.masked_fill_(~rank_mask, 1e5)
 
             if exists(adj_mat):
