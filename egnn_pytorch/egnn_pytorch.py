@@ -85,11 +85,14 @@ SiLU = nn.SiLU if hasattr(nn, 'SiLU') else Swish_
 # https://github.com/lucidrains/se3-transformer-pytorch/blob/main/se3_transformer_pytorch/se3_transformer_pytorch.py#L95
 
 class CoorsNorm(nn.Module):
-    def __init__(self, eps = 1e-8):
+    def __init__(self, eps = 1e-8, scale_init = 1., bias_init = 0.):
         super().__init__()
         self.eps = eps
-        self.scale = nn.Parameter(torch.ones(1))
-        self.bias = nn.Parameter(torch.zeros(1))
+        scale = torch.zeros(1).fill_(scale_init)
+        bias = torch.zeros(1).fill_(bias_init)
+
+        self.scale = nn.Parameter(scale)
+        self.bias = nn.Parameter(bias)
 
     def forward(self, coors):
         norm = coors.norm(dim = -1, keepdim = True)
@@ -110,6 +113,8 @@ class EGNN(nn.Module):
         init_eps = 1e-3,
         norm_feats = False,
         norm_coors = False,
+        norm_coors_scale_init = 1.,
+        norm_coors_bias_init = 0.,
         update_feats = True,
         update_coors = True,
         only_sparse_neighbors = False,
@@ -141,7 +146,7 @@ class EGNN(nn.Module):
         ) if soft_edges else None
 
         self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
-        self.coors_norm = CoorsNorm() if norm_coors else nn.Identity()
+        self.coors_norm = CoorsNorm(scale_init = norm_coors_scale_init, bias_init = norm_coors_bias_init) if norm_coors else nn.Identity()
 
         self.m_pool_method = m_pool_method
 
