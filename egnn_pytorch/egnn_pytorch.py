@@ -146,13 +146,25 @@ class GlobalLinearAttention(nn.Module):
         self.attn1 = Attention(dim, heads, dim_head)
         self.attn2 = Attention(dim, heads, dim_head)
 
+        self.ff = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim * 4),
+            nn.GELU(),
+            nn.Linear(dim * 4, dim)
+        )
+
     def forward(self, x, queries, mask = None):
         res_x, res_queries = x, queries
         x, queries = self.norm_seq(x), self.norm_queries(queries)
 
         induced = self.attn1(queries, x, mask = mask)
         out     = self.attn2(x, induced)
-        return out + res_x, induced + res_queries
+
+        x =  out + res_x
+        queries = induced + res_queries
+
+        x = self.ff(x) + x
+        return x, queries
 
 # classes
 
