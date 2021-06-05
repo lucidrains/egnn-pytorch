@@ -180,7 +180,7 @@ class EGNN(nn.Module):
         init_eps = 1e-3,
         norm_feats = False,
         norm_coors = False,
-        norm_coors_scale_init = 1.,
+        norm_coors_scale_init = 1e-2,
         norm_coors_bias_init = 0.,
         update_feats = True,
         update_coors = True,
