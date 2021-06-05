@@ -99,6 +99,61 @@ class CoorsNorm(nn.Module):
         normed_coors = coors / norm.clamp(min = self.eps)
         return normed_coors * self.scale + self.bias
 
+# global linear attention
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64):
+        super().__init__()
+        inner_dim = heads * dim_head
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.to_q = nn.Linear(dim, inner_dim, bias = False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias = False)
+        self.to_out = nn.Linear(inner_dim, dim)
+
+    def forward(self, x, context, mask = None):
+        h = self.heads
+
+        q = self.to_q(x)
+        kv = self.to_kv(context).chunk(2, dim = -1)
+
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, *kv))
+        dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+        if exists(mask):
+            mask_value = -torch.finfo(dots.dtype).max
+            mask = rearrange(mask, 'b n -> b () () n')
+            dots.masked_fill_(~mask, mask_value)
+
+        attn = dots.softmax(dim = -1)
+        out = einsum('b h i j, b h j d -> b h i d', attn, v)
+
+        out = rearrange(out, 'b h n d -> b n (h d)', h = h)
+        return self.to_out(out)
+
+class GlobalLinearAttention(nn.Module):
+    def __init__(
+        self,
+        *,
+        dim,
+        heads = 8,
+        dim_head = 64
+    ):
+        super().__init__()
+        self.norm_seq = nn.LayerNorm(dim)
+        self.norm_queries = nn.LayerNorm(dim)
+        self.attn1 = Attention(dim, heads, dim_head)
+        self.attn2 = Attention(dim, heads, dim_head)
+
+    def forward(self, x, queries, mask = None):
+        res_x, res_queries = x, queries
+        x, queries = self.norm_seq(x), self.norm_queries(queries)
+
+        induced = self.attn1(queries, x, mask = mask)
+        out     = self.attn2(x, induced)
+        return out + res_x, induced + res_queries
+
 # classes
 
 class EGNN(nn.Module):
@@ -309,6 +364,10 @@ class EGNN_Network(nn.Module):
         edge_dim = 0,
         num_adj_degrees = None,
         adj_dim = 0,
+        global_linear_attn_every = 0,
+        global_linear_attn_heads = 8,
+        global_linear_attn_dim_head = 64,
+        num_global_tokens = 4,
         **kwargs
     ):
         super().__init__()
@@ -326,9 +385,19 @@ class EGNN_Network(nn.Module):
         edge_dim = edge_dim if self.has_edges else 0
         adj_dim = adj_dim if exists(num_adj_degrees) else 0
 
+        has_global_attn = global_linear_attn_every > 0
+        self.global_tokens = None
+        if has_global_attn:
+            self.global_tokens = nn.Parameter(torch.randn(num_global_tokens, dim))
+
         self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(EGNN(dim = dim, edge_dim = (edge_dim + adj_dim), norm_feats = True, **kwargs))
+        for ind in range(depth):
+            is_global_layer = has_global_attn and (ind % global_linear_attn_every) == 0
+
+            self.layers.append(nn.ModuleList([
+                GlobalLinearAttention(dim = dim, heads = global_linear_attn_heads, dim_head = global_linear_attn_dim_head) if is_global_layer else None,
+                EGNN(dim = dim, edge_dim = (edge_dim + adj_dim), norm_feats = True, **kwargs),
+            ]))
 
     def forward(self, feats, coors, adj_mat = None, edges = None, mask = None):
         b, device = feats.shape[0], feats.device
@@ -366,8 +435,15 @@ class EGNN_Network(nn.Module):
                 adj_emb = self.adj_emb(adj_indices)
                 edges = torch.cat((edges, adj_emb), dim = -1) if exists(edges) else adj_emb
 
-        for layer in self.layers:
-            feats, coors = layer(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)
+        global_tokens = None
+        if exists(self.global_tokens):
+            global_tokens = repeat(self.global_tokens, 'n d -> b n d', b = b)
+
+        for global_attn, egnn in self.layers:
+            if exists(global_attn):
+                feats, global_tokens = global_attn(feats, global_tokens, mask = mask)
+
+            feats, coors = egnn(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)
 
         return feats, coors
 
