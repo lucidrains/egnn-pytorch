@@ -1,6 +1,6 @@
 import torch
 
-from egnn_pytorch import EGNN, EGNN_sparse
+from egnn_pytorch import EGNN, EGNN_Sparse
 from egnn_pytorch.utils import rot
 
 torch.set_default_dtype(torch.float64)
@@ -103,7 +103,7 @@ def test_egnn_equivariance_with_coord_norm():
 
 
 def test_egnn_sparse_equivariance():
-    layer = EGNN_sparse(feats_dim=1,
+    layer = EGNN_Sparse(feats_dim=1,
                         m_dim=16,
                         fourier_features=4)
 
@@ -144,7 +144,7 @@ def test_egnn_sparse_equivariance():
 
 
 def test_geom_equivalence():
-    layer = EGNN_sparse(feats_dim=128,
+    layer = EGNN_Sparse(feats_dim=128,
                         edge_attr_dim=4,
                         m_dim=16,
                         fourier_features=4)
