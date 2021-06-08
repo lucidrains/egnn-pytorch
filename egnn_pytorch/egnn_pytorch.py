@@ -189,7 +189,8 @@ class EGNN(nn.Module):
         ) if soft_edges else None
 
         self.node_norm = nn.LayerNorm(dim) if norm_feats else nn.Identity()
-        self.coors_norm = CoorsNorm(scale_init = norm_coors_scale_init) if norm_coors else nn.Identity()
+        self.rel_coors_norm = CoorsNorm(scale_init = norm_coors_scale_init) if norm_coors else nn.Identity()
+        self.cross_coors_norm = CoorsNorm(scale_init = norm_coors_scale_init) if norm_coors else nn.Identity()
 
         self.m_pool_method = m_pool_method
 
@@ -204,7 +205,7 @@ class EGNN(nn.Module):
             nn.Linear(m_dim, m_dim * 4),
             dropout,
             SiLU(),
-            nn.Linear(m_dim * 4, 1)
+            nn.Linear(m_dim * 4, 3)
         ) if update_coors else None
 
         self.num_nearest_neighbors = num_nearest_neighbors
@@ -300,17 +301,41 @@ class EGNN(nn.Module):
                 mask = mask_i * mask_j
 
         if exists(self.coors_mlp):
-            coor_weights = self.coors_mlp(m_ij)
-            coor_weights = rearrange(coor_weights, 'b i j () -> b i j')
-
-            rel_coors = self.coors_norm(rel_coors)
+            all_weights = self.coors_mlp(m_ij)
 
             if exists(mask):
-                coor_weights.masked_fill_(~mask, 0.)
+                all_weights = all_weights.masked_fill(~mask[..., None], 0.)
+
+            coor_weights, weight_cross_i, weight_cross_j = all_weights.unbind(dim = -1)
+
+            # cross product vectors
+
+            rel_coors_i = repeat(rel_coors, 'b n i d -> b n i j d', j = j)
+            rel_coors_j = repeat(rel_coors, 'b n j d -> b n i j d', i = j)
+
+            cross_vectors = torch.cross(rel_coors_i, rel_coors_j)
+            cross_vectors = rearrange(cross_vectors, 'b n i j d -> b n (i j) d')
+
+            # compute cross weights
+
+            cross_weights = rearrange(weight_cross_i, 'b n i -> b n i ()') + rearrange(weight_cross_j, 'b n j -> b n () j')
+
+            cross_product_mask = torch.ones((j, j), device = device).tril()
+            cross_product_mask = rearrange(cross_product_mask, 'i j -> () () i j')
+            cross_weights = cross_weights * cross_product_mask
+
+            cross_weights = rearrange(cross_weights, 'b n i j -> b n (i j)')
+            coor_weights = torch.cat((coor_weights, cross_weights), dim = -1)
+
+            # clamp
+
+            rel_coors = self.rel_coors_norm(rel_coors)
+            cross_vectors = self.cross_coors_norm(cross_vectors)
+            rel_coors = torch.cat((rel_coors, cross_vectors), dim = -2)
 
             if exists(self.coor_weights_clamp_value):
                 clamp_value = self.coor_weights_clamp_value
-                coor_weights.clamp_(min = -clamp_value, max = clamp_value)
+                coor_weights = coor_weights.clamp(min = -clamp_value, max = clamp_value)
 
             coors_out = einsum('b i j, b i j c -> b i c', coor_weights, rel_coors) + coors
         else:
@@ -434,4 +459,3 @@ class EGNN_Network(nn.Module):
             feats, coors = egnn(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)
 
         return feats, coors
-
