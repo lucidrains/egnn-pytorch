@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'egnn-pytorch',
   packages = find_packages(),
-  version = '0.2.5',
+  version = '0.2.6',
   license='MIT',
   description = 'E(n)-Equivariant Graph Neural Network - Pytorch',
   author = 'Phil Wang, Eric Alcaide',

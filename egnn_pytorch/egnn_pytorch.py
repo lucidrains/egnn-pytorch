@@ -387,7 +387,15 @@ class EGNN_Network(nn.Module):
                 EGNN(dim = dim, edge_dim = (edge_dim + adj_dim), norm_feats = True, **kwargs),
             ]))
 
-    def forward(self, feats, coors, adj_mat = None, edges = None, mask = None):
+    def forward(
+        self,
+        feats,
+        coors,
+        adj_mat = None,
+        edges = None,
+        mask = None,
+        return_coor_changes = False
+    ):
         b, device = feats.shape[0], feats.device
 
         if exists(self.token_emb):
@@ -423,15 +431,24 @@ class EGNN_Network(nn.Module):
                 adj_emb = self.adj_emb(adj_indices)
                 edges = torch.cat((edges, adj_emb), dim = -1) if exists(edges) else adj_emb
 
+        # setup global attention
+
         global_tokens = None
         if exists(self.global_tokens):
             global_tokens = repeat(self.global_tokens, 'n d -> b n d', b = b)
+
+        # go through layers
+
+        coor_changes = [coors]
 
         for global_attn, egnn in self.layers:
             if exists(global_attn):
                 feats, global_tokens = global_attn(feats, global_tokens, mask = mask)
 
             feats, coors = egnn(feats, coors, adj_mat = adj_mat, edges = edges, mask = mask)
+            coor_changes.append(coors)
+
+        if return_coor_changes:
+            return feats, coors, coor_changes
 
         return feats, coors
-
