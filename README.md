@@ -213,6 +213,14 @@ Then
 $ python denoise_sparse.py
 ```
 
+## Tests
+
+Make sure you have pytorch geometric installed locally
+
+```bash
+$ python setup.py test
+```
+
 ## Citations
 
 ```bibtex
