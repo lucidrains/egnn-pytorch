@@ -173,6 +173,32 @@ mask = torch.ones_like(feats).bool()    # (1, 1024)
 feats_out, coors_out = net(feats, coors, mask = mask) # (1, 1024, 32), (1, 1024, 3)
 ```
 
+## All parameters
+
+```python
+import torch
+from egnn_pytorch import EGNN
+
+model = EGNN(
+    dim = dim,                         # input dimension
+    edge_dim = 0,                      # dimension of the edges, if exists, should be > 0
+    m_dim = 16,                        # hidden model dimension
+    fourier_features = 0,              # number of fourier features for encoding of relative distance - defaults to none as in paper
+    num_nearest_neighbors = 0,         # cap the number of neighbors doing message passing by relative distance
+    dropout = 0.0,                     # dropout
+    norm_feats = False,                # whether to layernorm the features
+    norm_coors = False,                # whether to normalize the coordinates, using a strategy from the SE(3) Transformers paper    
+    update_feats = True,               # whether to update features - you can build a layer that only updates one or the other
+    update_coors = True,               # whether ot update coordinates
+    only_sparse_neighbors = False,     # using this would only allow message passing along adjacent neighbors, using the adjacency matrix passed in 
+    valid_radius = float('inf'),       # the valid radius each node considers for message passing
+    m_pool_method = 'sum',             # whether to mean or sum pool for output node representation
+    soft_edges = False,                # extra GLU on the edges, purportedly helps stabilize the network in updated version of the paper
+    coor_weights_clamp_value = None    # clamping of the coordinate updates, again, for stabilization purposes
+)
+
+```
+
 ## Examples
 
 To run the protein backbone denoising example, first install `sidechainnet`
