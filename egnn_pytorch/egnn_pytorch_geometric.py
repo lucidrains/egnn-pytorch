@@ -184,7 +184,7 @@ class EGNN_Sparse(MessagePassing):
                 angle_data: List = None,  size: Size = None) -> Tensor:
         """ Inputs: 
             * x: (n_points, d) where d is pos_dims + feat_dims
-            * edge_index: (n_edges, 2)
+            * edge_index: (2, n_edges)
             * edge_attr: tensor (n_edges, n_feats) excluding basic distance feats.
             * batch: (n_points,) long tensor. specifies xloud belonging for each point
             * angle_data: list of tensors (levels, n_edges_i, n_length_path) long tensor.
