@@ -118,10 +118,12 @@ class EGNN_Sparse(MessagePassing):
         dropout = 0.,
         coor_weights_clamp_value = None, 
         aggr = "add",
+        coors_tanh=False,
         **kwargs
     ):
         assert aggr in {'add', 'sum', 'max', 'mean'}, 'pool method must be a valid option'
         assert update_feats or update_coors, 'you must update either features, coordinates, or both'
+        assert not (coors_tanh and not norm_coors), 'coors_tanh must be used in conjunction with norm_coors'
         kwargs.setdefault('aggr', aggr)
         super(EGNN_Sparse, self).__init__(**kwargs)
         # model params
@@ -168,7 +170,8 @@ class EGNN_Sparse(MessagePassing):
             nn.Linear(m_dim, m_dim * 4),
             self.dropout,
             SiLU(),
-            nn.Linear(self.m_dim * 4, 1)
+            nn.Linear(self.m_dim * 4, 1),
+            nn.Tanh() if coors_tanh else nn.Identity()
         ) if update_coors else None
 
         self.apply(self.init_)
