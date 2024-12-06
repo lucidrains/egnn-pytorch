@@ -227,9 +227,9 @@ class EGNN_Sparse(MessagePassing):
         size = self._check_input(edge_index, size)
         coll_dict = self._collect(self._user_args,
                                      edge_index, size, kwargs)
-        msg_kwargs = self.inspector.distribute('message', coll_dict)
-        aggr_kwargs = self.inspector.distribute('aggregate', coll_dict)
-        update_kwargs = self.inspector.distribute('update', coll_dict)
+        msg_kwargs = self.inspector.collect_param_data('message', coll_dict)
+        aggr_kwargs = self.inspector.collect_param_data('aggregate', coll_dict)
+        update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         
         # get messages
         m_ij = self.message(**msg_kwargs)
